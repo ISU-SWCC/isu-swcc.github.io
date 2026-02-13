@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SWCC Website</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background-color: #ffffff;
+        }
+
+        body {
+            font-family: "Helvetica", "Arial", sans-serif;
+            line-height: 1.6;
+            color: #1d1d1f;
+            background-color: #fff;
+        }
+
+        #background-video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: 0;
+        }
+
+        svg {
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .text-link {
+            position: fixed;
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 900;
+            color: black;
+            pointer-events: auto;
+            text-decoration: none;
+            z-index: 2;
+        }
+
+        .text-link:hover {
+            color: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <div id="menu-placeholder"></div>
+
+    <!-- Audio element -->
+    <audio id="audio" autoplay loop muted>
+        <source src="./assets/audio.mp3" type="audio/mpeg">
+        Your browser does not support the audio tag.
+    </audio>
+
+    <!-- Centered Logo -->
+    <div id="logo-container"
+        style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; z-index: 1; pointer-events: none;">
+        <img src="assets/logos/SWCC-Logo-NoText-NoBG-ZoomOut-Alpha.png" alt="SWCC Logo"
+            style="max-width: 120vw; max-height: 200vh; width: auto; height: auto;">
+    </div>
+
+    <!-- Video element -->
+    <video id="background-video" autoplay loop muted>
+        <source src="./assets/background.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+
+    <script>
+        fetch('components/menu.html')
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById('menu-placeholder').innerHTML = data;
+            })
+            .catch(error => console.error('Error loading menu:', error));
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('background-video');
+            const audio = document.getElementById('audio');
+
+            video.play().catch(error => console.error('Video play failed:', error));
+        });
+
+        document.addEventListener('keydown', (event) => {
+            const audio = document.getElementById('audio');
+            if (event.key === 'Enter') {
+                audio.play().catch(error => console.error('Audio play failed:', error));
+                if (audio.muted) {
+                    audio.muted = false;
+                    audio.play().catch(err => console.log('Playback failed:', err));
+                } else {
+                    audio.muted = true;
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,78 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body, html {
+    margin: 0; padding: 0;
+    height: 100%;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+.mission-statement {
+    text-align: left;
+    line-height: 1.4;
+    position: relative;
+}
+
+.line1 { font-size: 5vw; font-weight: 1000; margin-left: 0vw; animation: textSweep1 10s linear infinite; }
+.line2 { font-size: 5vw; font-weight: 1000; margin-left: 5vw; animation: textSweep2 10s linear infinite; }
+.line3 { font-size: 5vw; font-weight: 1000; margin-left: 10vw; animation: textSweep3 10s linear infinite; }
+.line4 { font-size: 5vw; font-weight: 1000; margin-left: 15vw; animation: textSweep4 10s linear infinite; }
+.line5 { font-size: 5vw; font-weight: 1000; margin-left: 20vw; animation: textSweep5 10s linear infinite; }
+.unbold { color: #2a2a2a; font-size: 4vw; font-weight: 1000; }
+
+@keyframes textSweep1 {
+    0%   { color: #0077ff; }
+    0%   { color: #0077ff; }
+    15%  { color: #000; }
+    30%  { color: #0077ff; }
+    100% { color: #0077ff; }
+}
+
+@keyframes textSweep2 {
+    0%   { color: #00cc88; }
+    15%  { color: #00cc88; }
+    30%  { color: #000; }
+    45%  { color: #00cc88; }
+    100% { color: #00cc88; }
+}
+
+@keyframes textSweep3 {
+    0%   { color: #ffd500; }
+    30%  { color: #ffd500; }
+    45%  { color: #000; }
+    60%  { color: #ffd500; }
+    100% { color: #ffd500; }
+}
+
+@keyframes textSweep4 {
+    0%   { color: #ff8800; }
+    45%  { color: #ff8800; }
+    60%  { color: #000; }
+    75%  { color: #ff8800; }
+    100% { color: #ff8800; }
+}
+
+@keyframes textSweep5 {
+    0%   { color: #ff3333; }
+    60%  { color: #ff3333; }
+    75%  { color: #000; }
+    90%  { color: #ff3333; }
+    100% { color: #ff3333; }
+}
+
+@keyframes colorCycle {
+    0%    { color: #0077ff; }
+    20%   { color: #00cc88; }
+    40%   { color: #ffd500; }
+    60%   { color: #ff8800; }
+    80%   { color: #ff3333; }
+    100%  { color: #0077ff; }
+}

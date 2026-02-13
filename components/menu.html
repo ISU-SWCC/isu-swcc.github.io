@@ -1,0 +1,96 @@
+<style>
+    .menu-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background-color: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 40px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+    }
+
+    .menu-left,
+    .menu-right {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .menu-left {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        position: relative;
+    }
+
+    .menu-bar a {
+        color: #1d1d1f;
+        text-decoration: none;
+        font-size: 20px;
+        font-weight: 600;
+        transition: color 0.3s ease;
+    }
+
+    .menu-bar a:hover {
+        color: #0071e3;
+    }
+
+    .collapsible {
+        position: relative;
+        display: flex;
+        align-items: center;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+
+    .collapsible span {
+        display: inline-block;
+    }
+
+    .collapsible .full-text {
+        opacity: 0;
+        max-width: 0;
+        overflow: hidden;
+        transition: opacity 1s ease-in-out, max-width 1s ease-in-out;
+        white-space: nowrap;
+    }
+
+    .collapsible:hover .full-text {
+        opacity: 1;
+        max-width: 150px;
+        margin-left: 2px;
+    }
+
+    .separator {
+        width: 1px;
+        height: 20px;
+        background-color: #d2d2d7;
+        margin: 0 20px;
+    }
+</style>
+
+<nav class="menu-bar">
+    <div class="menu-left">
+        <a href="isu-models.github.io" class="logo-link">
+            <img src="../assets/logos/SWCC-Logo-ISU.png" alt="SWCC ISU Logo" style="height: 50px; width: auto;">
+        </a>
+        <!-- These links will need to be updated as pages are created -->
+        <a href="#" class="collapsible"><span>M</span><span class="full-text">odel</span></a>
+        <a href="#" class="collapsible"><span>O</span><span class="full-text">ptimization</span></a>
+        <a href="#" class="collapsible"><span>D</span><span class="full-text">evelopment</span></a>
+        <a href="#" class="collapsible"><span>E</span><span class="full-text">valuation</span></a>
+        <a href="#" class="collapsible"><span>L</span><span class="full-text">ibraries</span></a>
+        <a href="#" class="collapsible"><span>S</span><span class="full-text">oftware</span></a>
+    </div>
+    <div class="menu-right">
+        <span class="separator"></span>
+        <a href="#">Home</a>
+        <a href="#">About</a>
+        <a href="#">Contact</a>
+    </div>
+</nav>

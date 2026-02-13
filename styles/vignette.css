@@ -1,0 +1,237 @@
+/* Vignette Viewer Styles */
+body {
+    background-color: #ffffff;
+    overflow-y: scroll;
+    margin: 0;
+}
+
+/* Layout Wrapper */
+.main-layout {
+    display: flex;
+    max-width: 1200px;
+    margin: 80px auto 50px;
+    /* Top margin for back button clearance */
+    gap: 40px;
+    padding: 0 20px;
+}
+
+/* Sidebar TOC */
+.vignette-toc {
+    flex: 0 0 250px;
+    position: sticky;
+    top: 100px;
+    /* Stick below the top of viewport */
+    height: calc(100vh - 120px);
+    overflow-y: auto;
+    border-right: 1px solid #ddd;
+    padding-right: 20px;
+    font-family: 'Montserrat', sans-serif;
+}
+
+.vignette-toc h3 {
+    font-size: 1.2em;
+    margin-top: 0;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #000;
+}
+
+.vignette-toc ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.vignette-toc li {
+    margin-bottom: 8px;
+}
+
+.vignette-toc a {
+    text-decoration: none;
+    color: #555;
+    display: block;
+    transition: color 0.2s;
+    font-size: 0.95em;
+}
+
+.vignette-toc a:hover {
+    color: #000;
+    text-decoration: none;
+}
+
+.vignette-toc a.h2 {
+    font-weight: 700;
+}
+
+.vignette-toc a.h3 {
+    font-weight: 400;
+    padding-left: 15px;
+    font-size: 0.9em;
+    color: #666;
+}
+
+/* Main Content */
+.vignette-container {
+    flex: 1;
+    min-width: 0;
+    /* Prevent flex overflow */
+    padding: 0;
+    /* Reset internal padding as it's handled by wrapper */
+    background: transparent;
+    color: #1d1d1f;
+    font-family: "Helvetica", "Arial", sans-serif;
+    line-height: 1.6;
+}
+
+/* Typography */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: 'Montserrat', sans-serif;
+    color: #000;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+}
+
+h1 {
+    font-size: 2.5em;
+    font-weight: 900;
+    border-bottom: 2px solid #000;
+    padding-bottom: 15px;
+    margin-top: 0;
+}
+
+h2 {
+    font-size: 1.8em;
+    font-weight: 700;
+    scroll-margin-top: 20px;
+}
+
+h3 {
+    font-size: 1.4em;
+    font-weight: 600;
+    scroll-margin-top: 20px;
+}
+
+p {
+    margin-bottom: 1em;
+    font-size: 1.1em;
+}
+
+a {
+    color: #0066cc;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Code Blocks */
+pre {
+    background-color: #f4f4f4;
+    padding: 15px;
+    border-radius: 5px;
+    overflow-x: auto;
+    font-family: 'Courier New', Courier, monospace;
+    margin-bottom: 1em;
+    border: 1px solid #ddd;
+}
+
+code {
+    font-family: 'Courier New', Courier, monospace;
+    background-color: #f4f4f4;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+pre code {
+    padding: 0;
+    background-color: transparent;
+}
+
+/* Lists */
+ul,
+ol {
+    margin-bottom: 1em;
+    padding-left: 2em;
+}
+
+li {
+    margin-bottom: 0.5em;
+}
+
+/* Blockquotes */
+blockquote {
+    border-left: 4px solid #000;
+    padding-left: 15px;
+    color: #555;
+    font-style: italic;
+    margin: 1.5em 0;
+}
+
+/* Back Button */
+.back-nav {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+}
+
+.back-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #000;
+    color: #fff;
+    text-decoration: none;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    border-radius: 30px;
+    transition: background-color 0.3s ease;
+}
+
+.back-btn:hover {
+    background-color: #333;
+    text-decoration: none;
+}
+
+/* Images */
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 20px auto;
+    border-radius: 5px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Loading State */
+#loading {
+    text-align: center;
+    margin-top: 20vh;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 1.5em;
+    color: #666;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 800px) {
+    .main-layout {
+        flex-direction: column;
+        margin-top: 80px;
+    }
+
+    .vignette-toc {
+        display: none;
+        /* Hide TOC on mobile for simplicity, or could make collapsible */
+    }
+
+    .vignette-container {
+        padding: 0;
+        max-width: 100%;
+    }
+}
