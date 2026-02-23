@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Products — SWCC Website</title>
+    <link rel="stylesheet" href="styles/products-page.css">
+</head>
+
+<body>
+    <div id="menu-placeholder"></div>
+
+    <main class="products-page">
+        <header class="page-header">
+            <h1>Products</h1>
+            <p>Tools and models for water resource simulation, watershed analysis, and environmental monitoring.</p>
+        </header>
+
+        <div class="products-grid">
+            <article class="product-card">
+                <img
+                    class="product-image"
+                    src="https://picsum.photos/seed/groundwater/420/262"
+                    alt="Groundwater flow model visualization"
+                >
+                <div class="product-body">
+                    <span class="product-tag">Model</span>
+                    <h2>Groundwater Flow Model</h2>
+                    <p>
+                        Simulate subsurface flow and transport with our modular groundwater modeling suite.
+                        Supports confined and unconfined aquifers, multiple layers, and integration with
+                        surface water and land-use data. Built for researchers and practitioners.
+                    </p>
+                    <a href="#" class="product-link">Learn more →</a>
+                </div>
+            </article>
+
+            <article class="product-card">
+                <img
+                    class="product-image"
+                    src="https://picsum.photos/seed/watershed/420/262"
+                    alt="Watershed flow model"
+                >
+                <div class="product-body">
+                    <span class="product-tag">Model</span>
+                    <h2>Watershed Flow Model</h2>
+                    <p>
+                        Catchment-scale hydrology and runoff routing for flood risk, water quality,
+                        and ecosystem studies. Combines rainfall-runoff, channel flow, and optional
+                        groundwater coupling in a single, configurable framework.
+                    </p>
+                    <a href="#" class="product-link">Learn more →</a>
+                </div>
+            </article>
+
+            <article class="product-card">
+                <img
+                    class="product-image"
+                    src="https://picsum.photos/seed/gauge/420/262"
+                    alt="Precipitation gauge"
+                >
+                <div class="product-body">
+                    <span class="product-tag">Hardware</span>
+                    <h2>Precipitation Gauge</h2>
+                    <p>
+                        Rugged, field-ready precipitation gauge with high temporal resolution and
+                        optional connectivity for real-time monitoring. Ideal for networks and
+                        integration with our watershed and groundwater models.
+                    </p>
+                    <a href="#" class="product-link">Learn more →</a>
+                </div>
+            </article>
+        </div>
+    </main>
+
+    <script>
+        fetch('components/menu.html')
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById('menu-placeholder').innerHTML = data;
+            })
+            .catch(error => console.error('Error loading menu:', error));
+    </script>
+</body>
+
+</html>
