@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About — SWCC Website</title>
+    <link rel="stylesheet" href="../styles/about-page.css">
+</head>
+
+<body>
+    <div id="menu-placeholder"></div>
+
+    <main class="about-page">
+        <section class="hero-section">
+            <span class="bold-heading">About SWCC</span>
+            <h1>Dedicated to Conservation</h1>
+            <img class="hero-image" src="https://picsum.photos/seed/conservation/1200/600"
+                alt="Iowa Soil and Water Conservation">
+
+            <nav class="jump-links">
+                <a href="#history">Our History</a>
+                <a href="#mission">Mission Statement</a>
+                <a href="#vision">Vision Statement</a>
+            </nav>
+        </section>
+
+        <section id="history">
+            <h2>Our History</h2>
+            <p>
+                Founded in the heart of Iowa's agricultural landscape, the Soil and Water Conservation Club (SWCC) at
+                Iowa State University has a rich tradition of promoting sustainable land and water management practices.
+                Since its inception, the club has served as a bridge between academic learning and professional
+                application, bringing together students from diverse backgrounds who share a common goal: preserving our
+                most vital natural resources.
+            </p>
+            <p>
+                The club's early years were marked by grassroots initiatives, student-led field trips to watershed
+                management sites, and collaborative projects with local conservation districts. Over the decades, SWCC
+                has grown into a premier student organization, recognized for its commitment to environmental
+                stewardship and its contribution to the university's mission of practical, hands-on education.
+            </p>
+        </section>
+
+        <section id="mission-vision">
+            <div class="mission-vision-grid">
+                <div id="mission">
+                    <span class="bold-heading">Mission</span>
+                    <h2>Mission Statement</h2>
+                    <p>
+                        To foster a community of students dedicated to the advancement of soil and water conservation
+                        through education, professional development, and service-oriented projects that benefit both the
+                        university and the surrounding environment.
+                    </p>
+                </div>
+                <div id="vision">
+                    <span class="bold-heading">Vision</span>
+                    <h2>Vision Statement</h2>
+                    <p>
+                        To be a leading student chapter that inspires future generations of conservation professionals
+                        to implement innovative solutions for a sustainable and resilient agricultural future.
+                    </p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        fetch('../components/menu.html')
+            .then(response => response.text())
+            .then(data => {
+                // Adjust menu paths for subdirectory
+                let updatedData = data.replace(/href="index\.html"/g, 'href="../index.html"');
+                updatedData = updatedData.replace(/href="products\.html"/g, 'href="products.html"');
+                updatedData = updatedData.replace(/href="events\.html"/g, 'href="events.html"');
+                updatedData = updatedData.replace(/href="contact\.html"/g, 'href="contact.html"');
+                updatedData = updatedData.replace(/href="about\.html"/g, 'href="about.html"');
+                updatedData = updatedData.replace(/src="assets\//g, 'src="../assets/');
+                updatedData = updatedData.replace(/src="\/assets\//g, 'src="../assets/');
+                document.getElementById('menu-placeholder').innerHTML = updatedData;
+            })
+            .catch(error => console.error('Error loading menu:', error));
+    </script>
+</body>
+
+</html>

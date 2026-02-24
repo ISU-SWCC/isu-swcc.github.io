@@ -73,6 +73,49 @@
             z-index: 1;
             pointer-events: none;
         }
+
+        .branding-container {
+            position: fixed;
+            top: 80px;
+            left: 40px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            pointer-events: none;
+        }
+
+        .branding-text {
+            font-family: 'Helvetica', Arial, sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1d1d1f;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            line-height: 1.2;
+            max-width: 120px;
+        }
+
+        .branding-logo {
+            height: 50px;
+            width: auto;
+        }
+
+        @media (max-width: 768px) {
+            .branding-container {
+                top: 70px;
+                left: 20px;
+            }
+
+            .branding-text {
+                font-size: 11px;
+                max-width: 90px;
+            }
+
+            .branding-logo {
+                height: 35px;
+            }
+        }
     </style>
 
 </head>
@@ -81,6 +124,19 @@
 
     <div id="menu-placeholder"></div>
 
+    <!-- Top Left AffiliateBranding -->
+    <div class="branding-container" style="--scale: 1;">
+        <span class="branding-text"
+            style="font-family: 'Montserrat'; font-weight: 600; font-size: 20px; max-width: 100px; text-transform: none;">
+            The Student Chapter of the
+        </span>
+        <img src="assets/logos/SWCS-Logo-Alpha.png" alt="SWCS Logo" class="branding-logo" style="height: 10vh;">
+        <span class="branding-text"
+            style="font-family: 'Montserrat'; font-weight: 600; font-size: 20px; max-width: 100px; text-transform: none;">
+            at
+        </span>
+        <img src="assets/logos/ISU-Logo.png" alt="ISU Logo" class="branding-logo" style="height: 10vh;">
+    </div>
 
     <!-- Centered Logo -->
     <div id="logo-container"
@@ -106,6 +162,7 @@
                 updatedData = updatedData.replace(/href="events\.html"/g, 'href="pages/events.html"');
                 updatedData = updatedData.replace(/href="products\.html"/g, 'href="pages/products.html"');
                 updatedData = updatedData.replace(/href="contact\.html"/g, 'href="pages/contact.html"');
+                updatedData = updatedData.replace(/href="about\.html"/g, 'href="pages/about.html"');
                 updatedData = updatedData.replace(/src="\.?\/assets\//g, 'src="assets/');
                 document.getElementById('menu-placeholder').innerHTML = updatedData;
             })
