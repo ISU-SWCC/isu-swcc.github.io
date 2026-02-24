@@ -15,14 +15,13 @@
         z-index: 1000;
     }
 
-    .menu-left,
-    .menu-right {
+    .menu-left {
         display: flex;
         align-items: center;
-        gap: 20px;
+        gap: 15px;
     }
 
-    .menu-left {
+    .menu-right {
         display: flex;
         align-items: center;
         gap: 20px;
@@ -35,6 +34,7 @@
         font-size: 20px;
         font-weight: 600;
         transition: color 0.3s ease;
+        white-space: nowrap;
     }
 
     .menu-bar a:hover {
@@ -45,12 +45,9 @@
         color: #1d1d1f;
         font-size: 20px;
         font-weight: 600;
-        transition: color 0.3s ease;
+        transition: opacity 0.5s ease, visibility 0.5s ease;
         cursor: default;
-    }
-
-    .menu-title:hover {
-        color: #C8102E;
+        white-space: nowrap;
     }
 
     .separator {
@@ -58,6 +55,70 @@
         height: 20px;
         background-color: #d2d2d7;
         margin: 0 20px;
+    }
+
+    /* Hamburger Menu */
+    .hamburger {
+        display: none;
+        flex-direction: column;
+        gap: 5px;
+        cursor: pointer;
+        padding: 10px;
+        z-index: 1001;
+    }
+
+    .hamburger div {
+        width: 25px;
+        height: 3px;
+        background-color: #1d1d1f;
+        transition: 0.3s;
+    }
+
+    .menu-dropdown {
+        display: none;
+        position: absolute;
+        top: 60px;
+        right: -40px;
+        width: 220px;
+        background-color: white;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        flex-direction: column;
+        padding: 10px 0;
+        border-radius: 0 0 0 8px;
+    }
+
+    .menu-dropdown a {
+        padding: 12px 20px;
+        width: 100%;
+        border-bottom: 1px solid #f5f5f7;
+    }
+
+    .menu-dropdown a:last-child {
+        border-bottom: none;
+    }
+
+    .menu-dropdown.active {
+        display: flex;
+    }
+
+    @media (max-width: 540px) {
+        .menu-title {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+    }
+
+    @media (max-width: 960px) {
+
+        .menu-right>a,
+        .menu-right .separator {
+            display: none;
+        }
+
+        .hamburger {
+            display: flex;
+        }
     }
 </style>
 
@@ -70,7 +131,6 @@
                     style="height: 120px; width: auto; flex-shrink: 0;">
             </div>
         </a>
-        <!-- These links will need to be updated as pages are created -->
         <span class="menu-title">Soil & Water Conservation Club</span>
     </div>
     <div class="menu-right">
@@ -80,5 +140,19 @@
         <a href="events.html">Events</a>
         <a href="products.html">Products</a>
         <a href="contact.html">Contact</a>
+
+        <div class="hamburger" onclick="document.querySelector('.menu-dropdown').classList.toggle('active')">
+            <div></div>
+            <div></div>
+            <div></div>
+        </div>
+
+        <div class="menu-dropdown">
+            <a href="index.html">Home</a>
+            <a href="about.html">About</a>
+            <a href="events.html">Events</a>
+            <a href="products.html">Products</a>
+            <a href="contact.html">Contact</a>
+        </div>
     </div>
 </nav>

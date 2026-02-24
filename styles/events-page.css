@@ -78,8 +78,12 @@ body {
     margin-bottom: 3rem;
 }
 
+.button-group {
+    display: flex;
+    gap: 15px;
+}
+
 .download-btn {
-    align-self: flex-start;
     padding: 12px 30px;
     background-color: transparent;
     border: 2px solid #fff;
@@ -97,29 +101,132 @@ body {
     border-color: #C8102E;
 }
 
-.thumbnail-gallery {
+.pause-btn {
+    padding: 12px 30px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border: 2px solid #fff;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 30px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.pause-btn:hover {
+    background-color: rgba(255, 255, 255, 0.4);
+}
+
+.countdown-timer {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    margin-bottom: 2rem;
+    opacity: 1.0;
+    transition: opacity 0.3s ease;
+    cursor: default;
+    color: white;
+    /* Default for "This event starts in:" */
+}
+
+.countdown-timer .time-val {
+    color: #C8102E;
+    /* ISU Red for the time itself */
+    text-shadow:
+        -0.5px -0.5px 0 #fff,
+        0.5px -0.5px 0 #fff,
+        -0.5px 0.5px 0 #fff,
+        0.5px 0.5px 0 #fff;
+}
+
+.countdown-timer:hover {
+    opacity: 1;
+}
+
+.thumbnail-gallery-wrapper {
     position: absolute;
     bottom: 40px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 20px;
+    align-items: center;
+    gap: 15px;
     z-index: 10;
+}
+
+.thumbnail-gallery {
+    display: flex;
+    gap: 20px;
     padding: 20px;
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(5px);
     border-radius: 15px;
+    max-width: 830px;
+    /* (150px * 5) + (20px * 4) = 830px (+ padding) */
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    transition: max-width 0.3s ease;
+    width: fit-content;
+}
+
+@media (max-width: 1100px) {
+    .thumbnail-gallery {
+        max-width: 490px;
+        /* 3 thumbnails: (150*3) + (20*2) = 490px */
+    }
+}
+
+@media (max-width: 700px) {
+    .thumbnail-gallery {
+        max-width: 150px;
+        /* 1 thumbnail: 150px */
+        padding: 20px 20px;
+    }
+}
+
+.nav-arrow {
+    background: rgba(0, 0, 0, 0.5);
+    border: 2px solid white;
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.5rem;
+    font-weight: 700;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(5px);
+    flex-shrink: 0;
+}
+
+.nav-arrow:hover:not(:disabled) {
+    background: #C8102E;
+    border-color: #C8102E;
+    transform: scale(1.1);
+}
+
+.nav-arrow:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 .thumbnail-container {
     position: relative;
     width: 150px;
+    /* Restored original width */
     height: 100px;
     cursor: pointer;
     border-radius: 8px;
     overflow: hidden;
     transition: transform 0.3s ease, border-color 0.3s ease;
     border: 3px solid transparent;
+    flex-shrink: 0;
+    /* Ensure they don't squash */
 }
 
 .thumbnail-container:hover,
@@ -164,26 +271,4 @@ body {
 
 .thumbnail-overlay .date {
     font-size: 0.7rem;
-}
-
-.controls {
-    position: absolute;
-    bottom: 160px;
-    right: 40px;
-    z-index: 10;
-}
-
-.pause-btn {
-    background: rgba(255, 255, 255, 0.2);
-    border: 2px solid #fff;
-    color: #fff;
-    padding: 10px 20px;
-    border-radius: 25px;
-    cursor: pointer;
-    font-weight: 600;
-    transition: background 0.3s ease;
-}
-
-.pause-btn:hover {
-    background: rgba(255, 255, 255, 0.4);
 }

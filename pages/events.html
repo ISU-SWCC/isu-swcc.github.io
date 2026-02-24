@@ -19,16 +19,20 @@
                 <h1 id="main-title"></h1>
                 <p id="main-date-location" class="date-location"></p>
                 <p id="main-description" class="description"></p>
-                <button id="download-ics-btn" class="download-btn">Add to Calendar (.ics)</button>
+                <div id="event-countdown" class="countdown-timer"></div>
+                <div class="button-group">
+                    <button id="download-ics-btn" class="download-btn">Add to Calendar (.ics)</button>
+                    <button id="pause-btn" class="pause-btn">Pause Auto-Scroll</button>
+                </div>
             </div>
         </div>
 
-        <div class="controls">
-            <button id="pause-btn" class="pause-btn">Pause Auto-Scroll</button>
-        </div>
-
-        <div id="thumbnail-gallery" class="thumbnail-gallery">
-            <!-- Thumbnails injected here -->
+        <div id="thumbnail-gallery-wrapper" class="thumbnail-gallery-wrapper">
+            <button id="prev-btn" class="nav-arrow prev">&lt;</button>
+            <div id="thumbnail-gallery" class="thumbnail-gallery">
+                <!-- Thumbnails injected here -->
+            </div>
+            <button id="next-btn" class="nav-arrow next">&gt;</button>
         </div>
     </main>
 
@@ -43,19 +47,16 @@
                 const response = await fetch('../events/events.json');
                 events = await response.json();
 
-                // Sort by nearest upcoming date
                 const now = new Date();
-                events.sort((a, b) => {
-                    const diffA = new Date(a.date) - now;
-                    const diffB = new Date(b.date) - now;
-                    // Put past events at the end, upcoming first
-                    if (diffA < 0 && diffB >= 0) return 1;
-                    if (diffA >= 0 && diffB < 0) return -1;
-                    return diffA - diffB;
-                });
+                // Sort by date/time ascending
+                events.sort((a, b) => new Date(a.date + 'T' + a.time) - new Date(b.date + 'T' + b.time));
+
+                // Find index of first upcoming event
+                currentIndex = events.findIndex(e => new Date(e.date + 'T' + e.time) >= now);
+                if (currentIndex === -1) currentIndex = 0; // If all events past, start with first one
 
                 renderThumbnails();
-                displayEvent(0);
+                displayEvent(currentIndex);
                 startCycle();
             } catch (error) {
                 console.error('Error loading events:', error);
@@ -89,7 +90,10 @@
                 `;
                 gallery.appendChild(container);
             });
+            updateNavArrows();
         }
+
+        let countdownInterval;
 
         function displayEvent(index) {
             const event = events[index];
@@ -98,7 +102,13 @@
 
             // Highlight thumbnail
             document.querySelectorAll('.thumbnail-container').forEach(t => t.classList.remove('active'));
-            document.getElementById(`thumb-${index}`).classList.add('active');
+            const activeThumb = document.getElementById(`thumb-${index}`);
+            activeThumb.classList.add('active');
+
+            // Scroll thumbnail into view
+            activeThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+
+            updateNavArrows();
 
             // Fade out
             info.classList.remove('active');
@@ -120,6 +130,11 @@
                 document.getElementById('main-date-location').innerHTML = `${fullDateStr}<br>${event.location}`;
                 document.getElementById('main-description').textContent = event.description;
 
+                // Update countdown
+                updateCountdown(dateObj);
+                if (countdownInterval) clearInterval(countdownInterval);
+                countdownInterval = setInterval(() => updateCountdown(dateObj), 1000);
+
                 // Update download button handler
                 document.getElementById('download-ics-btn').onclick = () => downloadICS(event);
 
@@ -127,6 +142,52 @@
                 info.classList.add('active');
             }, 500);
         }
+
+        function updateCountdown(eventDate) {
+            const now = new Date();
+            const diff = eventDate - now;
+            const countdownEl = document.getElementById('event-countdown');
+
+            if (diff <= 0) {
+                countdownEl.innerHTML = "This event has started or passed.";
+                return;
+            }
+
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+            if (days >= 2) {
+                countdownEl.innerHTML = `This event starts in: <span class="time-val">${days} days</span>`;
+            } else {
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                countdownEl.innerHTML = `This event starts in: <span class="time-val">${hours} hrs ${minutes} mins ${seconds} secs</span>`;
+            }
+        }
+
+        function updateNavArrows() {
+            const nextBtn = document.getElementById('next-btn');
+            const prevBtn = document.getElementById('prev-btn');
+
+            prevBtn.disabled = currentIndex === 0;
+            nextBtn.disabled = currentIndex === events.length - 1;
+        }
+
+        document.getElementById('prev-btn').onclick = () => {
+            if (currentIndex > 0) {
+                currentIndex--;
+                displayEvent(currentIndex);
+                if (!isPaused) restartCycle();
+            }
+        };
+
+        document.getElementById('next-btn').onclick = () => {
+            if (currentIndex < events.length - 1) {
+                currentIndex++;
+                displayEvent(currentIndex);
+                if (!isPaused) restartCycle();
+            }
+        };
 
         function downloadICS(event) {
             const dateStr = event.date.replace(/-/g, '');
