@@ -22,7 +22,7 @@
                 <img class="product-image" src="https://picsum.photos/seed/groundwater/420/262"
                     alt="Groundwater flow model visualization">
                 <div class="product-body">
-                    <span class="product-tag">Educational Model</span>
+                    <span class="product-tag">Educational Tool</span>
                     <h2>Groundwater Flow Model</h2>
                     <p>
                         Simulate subsurface flow and transport with our modular groundwater modeling suite.
@@ -37,28 +37,28 @@
                 <img class="product-image" src="https://picsum.photos/seed/watershed/420/262"
                     alt="Watershed flow model">
                 <div class="product-body">
-                    <span class="product-tag">Educational Model</span>
+                    <span class="product-tag">Educational Tool</span>
                     <h2>Watershed Flow Model</h2>
                     <p>
                         Catchment-scale hydrology and runoff routing for flood risk, water quality,
                         and ecosystem studies. Combines rainfall-runoff, channel flow, and optional
                         groundwater coupling in a single, configurable framework.
                     </p>
-                    <a href="#" class="product-link">Coming Soon →</a>
+                    <a href="#" class="product-link">Available Fall 2026 →</a>
                 </div>
             </article>
 
             <article class="product-card">
                 <img class="product-image" src="https://picsum.photos/seed/gauge/420/262" alt="Precipitation gauge">
                 <div class="product-body">
-                    <span class="product-tag">Commercial Gauge</span>
+                    <span class="product-tag">Commercial Product</span>
                     <h2>Precipitation Gauge</h2>
                     <p>
                         Rugged, field-ready precipitation gauge with high temporal resolution and
                         optional connectivity for real-time monitoring. Ideal for networks and
                         integration with our watershed and groundwater models.
                     </p>
-                    <a href="#" class="product-link">Coming Soon →</a>
+                    <a href="#" class="product-link">Available Fall 2027 →</a>
                 </div>
             </article>
         </div>
@@ -72,6 +72,7 @@
                 let updatedData = data.replace(/href="index\.html"/g, 'href="../index.html"');
                 updatedData = updatedData.replace(/href="events\.html"/g, 'href="events.html"');
                 updatedData = updatedData.replace(/href="products\.html"/g, 'href="products.html"');
+                updatedData = updatedData.replace(/href="contact\.html"/g, 'href="contact.html"');
                 updatedData = updatedData.replace(/src="assets\//g, 'src="../assets/');
                 updatedData = updatedData.replace(/src="\/assets\//g, 'src="../assets/');
                 document.getElementById('menu-placeholder').innerHTML = updatedData;
