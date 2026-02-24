@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Events — SWCC Website</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../styles/events-page.css">
+</head>
+
+<body>
+    <div id="menu-placeholder"></div>
+
+    <main class="events-page">
+        <div id="event-bg" class="event-background"></div>
+        <div class="event-details-overlay">
+            <div id="event-info" class="event-info">
+                <h1 id="main-title"></h1>
+                <p id="main-date-location" class="date-location"></p>
+                <p id="main-description" class="description"></p>
+                <button id="download-ics-btn" class="download-btn">Add to Calendar (.ics)</button>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="pause-btn" class="pause-btn">Pause Auto-Scroll</button>
+        </div>
+
+        <div id="thumbnail-gallery" class="thumbnail-gallery">
+            <!-- Thumbnails injected here -->
+        </div>
+    </main>
+
+    <script>
+        let events = [];
+        let currentIndex = 0;
+        let isPaused = false;
+        let cycleInterval;
+
+        async function init() {
+            try {
+                const response = await fetch('../events/events.json');
+                events = await response.json();
+
+                // Sort by nearest upcoming date
+                const now = new Date();
+                events.sort((a, b) => {
+                    const diffA = new Date(a.date) - now;
+                    const diffB = new Date(b.date) - now;
+                    // Put past events at the end, upcoming first
+                    if (diffA < 0 && diffB >= 0) return 1;
+                    if (diffA >= 0 && diffB < 0) return -1;
+                    return diffA - diffB;
+                });
+
+                renderThumbnails();
+                displayEvent(0);
+                startCycle();
+            } catch (error) {
+                console.error('Error loading events:', error);
+            }
+        }
+
+        function renderThumbnails() {
+            const gallery = document.getElementById('thumbnail-gallery');
+            gallery.innerHTML = '';
+            events.forEach((event, index) => {
+                const container = document.createElement('div');
+                container.className = 'thumbnail-container';
+                container.id = `thumb-${index}`;
+                container.onclick = () => {
+                    currentIndex = index;
+                    displayEvent(index);
+                    if (!isPaused) restartCycle();
+                };
+
+                const dateObj = new Date(event.date + 'T' + event.time);
+                const month = dateObj.toLocaleString('en-US', { month: 'short' });
+                const day = dateObj.getDate().toString().padStart(2, '0');
+                const formattedDate = `${month}. ${day}`;
+
+                container.innerHTML = `
+                    <img src="${event.thumbnail}" alt="${event.title}">
+                    <div class="thumbnail-overlay">
+                        <span class="title">${event.title}</span>
+                        <span class="date">${formattedDate}</span>
+                    </div>
+                `;
+                gallery.appendChild(container);
+            });
+        }
+
+        function displayEvent(index) {
+            const event = events[index];
+            const bg = document.getElementById('event-bg');
+            const info = document.getElementById('event-info');
+
+            // Highlight thumbnail
+            document.querySelectorAll('.thumbnail-container').forEach(t => t.classList.remove('active'));
+            document.getElementById(`thumb-${index}`).classList.add('active');
+
+            // Fade out
+            info.classList.remove('active');
+
+            setTimeout(() => {
+                bg.style.backgroundImage = `url(${event.image})`;
+                document.getElementById('main-title').textContent = event.title;
+
+                const dateObj = new Date(event.date + 'T' + event.time);
+                const fullDateStr = dateObj.toLocaleString('en-US', {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit'
+                });
+
+                document.getElementById('main-date-location').innerHTML = `${fullDateStr}<br>${event.location}`;
+                document.getElementById('main-description').textContent = event.description;
+
+                // Update download button handler
+                document.getElementById('download-ics-btn').onclick = () => downloadICS(event);
+
+                // Fade in
+                info.classList.add('active');
+            }, 500);
+        }
+
+        function downloadICS(event) {
+            const dateStr = event.date.replace(/-/g, '');
+            const timeStr = event.time.replace(/:/g, '') + '00';
+            const start = `${dateStr}T${timeStr}`;
+
+            // Assume 2 hour duration for events
+            const endHour = (parseInt(event.time.slice(0, 2)) + 2).toString().padStart(2, '0');
+            const end = `${dateStr}T${endHour}${event.time.slice(3, 5)}00`;
+
+            const icsContent = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//SWCC Website//EN',
+                'BEGIN:VEVENT',
+                `SUMMARY:${event.title}`,
+                `DTSTART:${start}`,
+                `DTEND:${end}`,
+                `LOCATION:${event.location}`,
+                `DESCRIPTION:${event.description}`,
+                'END:VEVENT',
+                'END:VCALENDAR'
+            ].join('\r\n');
+
+            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}.ics`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function startCycle() {
+            if (cycleInterval) clearInterval(cycleInterval);
+            cycleInterval = setInterval(() => {
+                if (!isPaused) {
+                    currentIndex = (currentIndex + 1) % events.length;
+                    displayEvent(currentIndex);
+                }
+            }, 15000);
+        }
+
+        function restartCycle() {
+            clearInterval(cycleInterval);
+            startCycle();
+        }
+
+        document.getElementById('pause-btn').onclick = () => {
+            isPaused = !isPaused;
+            const btn = document.getElementById('pause-btn');
+            btn.textContent = isPaused ? 'Resume Auto-Scroll' : 'Pause Auto-Scroll';
+        };
+
+        // Load Menu
+        fetch('../components/menu.html')
+            .then(response => response.text())
+            .then(data => {
+                // Adjust menu paths for subdirectory
+                let updatedData = data.replace(/href="index\.html"/g, 'href="../index.html"');
+                updatedData = updatedData.replace(/href="products\.html"/g, 'href="products.html"');
+                updatedData = updatedData.replace(/href="events\.html"/g, 'href="events.html"');
+                updatedData = updatedData.replace(/src="assets\//g, 'src="../assets/');
+                document.getElementById('menu-placeholder').innerHTML = updatedData;
+            })
+            .catch(error => console.error('Error loading menu:', error));
+
+        init();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,42 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Icon?
+Icon
+
+# Windows-specific
+desktop.ini
+$RECYCLE.BIN/
+
+# Text editor / IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# Local development
+.gemini/
+.agents/
+.agent/
+_agents/
+_agent/
+appDataDir/
+brain/
+logs/
+node_modules/
+.env
+.DS_Store
+
+# User-specific request: icon files
+Icon?
+Icon
+
+# Temporary files
+*.tmp
+*.log

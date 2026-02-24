@@ -1,5 +1,5 @@
 * {
-    margin: 0; 
+    margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
@@ -11,7 +11,13 @@ body {
     background-color: #fff;
 }
 
-.section-A, .m-section-A, .o-section-A, .d-section-A, .e-section-A, .l-section-A, .s-section-A {
+.section-A,
+.m-section-A,
+.o-section-A,
+.d-section-A,
+.e-section-A,
+.l-section-A,
+.s-section-A {
     margin-top: 50px;
     height: 100vh;
     display: flex;
@@ -28,7 +34,8 @@ body {
     background-image: url('../backgrounds/model.png');
 }
 
-.m-section-A, .section-A {
+.m-section-A,
+.section-A {
     background-image: url('../backgrounds/model.png');
 }
 
@@ -68,7 +75,7 @@ body {
 .btn {
     display: inline-block;
     padding: 12px 24px;
-    background-color: #0071e3;
+    background-color: #C8102E;
     color: #fff;
     text-decoration: none;
     border-radius: 50px;
@@ -79,7 +86,7 @@ body {
 }
 
 .btn:hover {
-    background-color: #005bb5;
+    background-color: #A20D25;
     border-color: #000;
 }
 
@@ -103,11 +110,13 @@ body {
     gap: 10px;
     width: 10%;
     font-weight: normal;
-    text-align: left; /* Explicitly set alignment on the flex container */
+    text-align: left;
+    /* Explicitly set alignment on the flex container */
 }
 
 .checkbox-label span {
-    white-space: nowrap; /* Forces text to stay on a single line */
+    white-space: nowrap;
+    /* Forces text to stay on a single line */
 }
 
 .checkbox-label input[type="checkbox"] {

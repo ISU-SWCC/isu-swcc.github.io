@@ -85,7 +85,7 @@ body {
 .product-card .product-tag {
     font-size: 13px;
     font-weight: 600;
-    color: #0071e3;
+    color: #C8102E;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-bottom: 8px;
@@ -103,11 +103,11 @@ body {
     margin-top: 20px;
     font-size: 16px;
     font-weight: 600;
-    color: #0071e3;
+    color: #C8102E;
     text-decoration: none;
     transition: color 0.3s ease;
 }
 
 .product-card .product-link:hover {
-    color: #005bb5;
+    color: #A20D25;
 }

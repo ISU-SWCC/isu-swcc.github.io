@@ -1,0 +1,62 @@
+[
+    {
+        "id": 1,
+        "title": "Spring Semester Kickoff",
+        "date": "2026-03-05",
+        "time": "18:00",
+        "location": "Agronomy Hall, Room 2050",
+        "description": "Join us for our first meeting of the spring semester! We'll be discussing upcoming projects, field trips, and how you can get involved in soil and water conservation efforts on campus.",
+        "image": "https://picsum.photos/seed/kickoff/1920/1080",
+        "thumbnail": "https://picsum.photos/seed/kickoff/400/250"
+    },
+    {
+        "id": 2,
+        "title": "Erosion Control Workshop",
+        "date": "2026-03-12",
+        "time": "14:00",
+        "location": "ISU Research Farm, Field A",
+        "description": "A hands-on workshop demonstrating various erosion control techniques. Participants will learn how to install silt fences, use erosion control blankets, and understand the importance of vegetative cover.",
+        "image": "https://picsum.photos/seed/erosion/1920/1080",
+        "thumbnail": "https://picsum.photos/seed/erosion/400/250"
+    },
+    {
+        "id": 3,
+        "title": "Local Watershed Cleanup",
+        "date": "2026-03-25",
+        "time": "09:00",
+        "location": "Squaw Creek Park Main Lot",
+        "description": "Giving back to our community by cleaning up the Squaw Creek watershed. We'll be collecting debris and documenting water quality parameters as we go. Lunch provided!",
+        "image": "https://picsum.photos/seed/cleanup/1920/1080",
+        "thumbnail": "https://picsum.photos/seed/cleanup/400/250"
+    },
+    {
+        "id": 4,
+        "title": "Conservation Careers Panel",
+        "date": "2026-04-10",
+        "time": "17:30",
+        "location": "Memorial Union, Cardinal Room",
+        "description": "Meet professionals working in the field of conservation. Our panelists include soil scientists, hydrologists, and environmental policy experts. Great for networking!",
+        "image": "https://picsum.photos/seed/careers/1920/1080",
+        "thumbnail": "https://picsum.photos/seed/careers/400/250"
+    },
+    {
+        "id": 5,
+        "title": "Sustainable Farming Tour",
+        "date": "2026-04-22",
+        "time": "13:00",
+        "location": "Sustainable Iowa Farm",
+        "description": "Earth Day field trip to a local sustainable farm. See regenerative agriculture in action, including no-till practices and diverse cover cropping strategies.",
+        "image": "https://picsum.photos/seed/farming/1920/1080",
+        "thumbnail": "https://picsum.photos/seed/farming/400/250"
+    },
+    {
+        "id": 6,
+        "title": "End of Year BBQ",
+        "date": "2026-05-08",
+        "time": "16:00",
+        "location": "Brookside Park, Shelter 3",
+        "description": "Celebrating a successful year of conservation work! Relax, enjoy some good food, and help us plan for next year's adventures.",
+        "image": "https://picsum.photos/seed/bbq/1920/1080",
+        "thumbnail": "https://picsum.photos/seed/bbq/400/250"
+    }
+]

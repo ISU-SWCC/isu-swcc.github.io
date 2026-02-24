@@ -60,7 +60,18 @@
         }
 
         .text-link:hover {
-            color: rgba(255, 255, 255, 0.3);
+            color: #C8102E;
+        }
+
+        .video-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(255, 255, 255, 0.5);
+            z-index: 1;
+            pointer-events: none;
         }
     </style>
 
@@ -70,18 +81,15 @@
 
     <div id="menu-placeholder"></div>
 
-    <!-- Audio element -->
-    <audio id="audio" autoplay loop muted>
-        <source src="./assets/audio.mp3" type="audio/mpeg">
-        Your browser does not support the audio tag.
-    </audio>
 
     <!-- Centered Logo -->
     <div id="logo-container"
-        style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; z-index: 1; pointer-events: none;">
+        style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; z-index: 2; pointer-events: none;">
         <img src="assets/logos/SWCC-Logo-NoText-NoBG-ZoomOut-Alpha.png" alt="SWCC Logo"
-            style="max-width: 120vw; max-height: 200vh; width: auto; height: auto;">
+            style="max-height: 150vh; width: auto; height: auto;">
     </div>
+
+    <div class="video-overlay"></div>
 
     <!-- Video element -->
     <video id="background-video" autoplay loop muted>
@@ -93,26 +101,27 @@
         fetch('components/menu.html')
             .then(response => response.text())
             .then(data => {
-                document.getElementById('menu-placeholder').innerHTML = data;
+                // Adjust menu paths if loaded from root
+                let updatedData = data.replace(/href="index\.html"/g, 'href="index.html"');
+                updatedData = updatedData.replace(/href="events\.html"/g, 'href="pages/events.html"');
+                updatedData = updatedData.replace(/href="products\.html"/g, 'href="pages/products.html"');
+                updatedData = updatedData.replace(/src="\.?\/assets\//g, 'src="assets/');
+                document.getElementById('menu-placeholder').innerHTML = updatedData;
             })
             .catch(error => console.error('Error loading menu:', error));
 
         document.addEventListener('DOMContentLoaded', () => {
             const video = document.getElementById('background-video');
-            const audio = document.getElementById('audio');
-
             video.play().catch(error => console.error('Video play failed:', error));
         });
 
         document.addEventListener('keydown', (event) => {
-            const audio = document.getElementById('audio');
+            const video = document.getElementById('background-video');
             if (event.key === 'Enter') {
-                audio.play().catch(error => console.error('Audio play failed:', error));
-                if (audio.muted) {
-                    audio.muted = false;
-                    audio.play().catch(err => console.log('Playback failed:', err));
+                if (video.muted) {
+                    video.muted = false;
                 } else {
-                    audio.muted = true;
+                    video.muted = true;
                 }
             }
         });
