@@ -1,0 +1,54 @@
+{
+  "title": "Watershed Flow Model",
+  "intro": "A physical watershed model made of 24-inch squares. The map starts on an example basin. Replace the boundary file when the club dataset is ready.",
+  "square_inches": 24,
+  "max_squares": 100,
+  "delineate_url": null,
+  "printers": null,
+  "assembly_days": null,
+  "assembly_hours": null,
+  "wage_per_hour": null,
+  "machine_rate_per_hour": null,
+  "packaging_grams": null,
+  "kit": {
+    "description": "Accessory kit. Contents and price are not recorded yet.",
+    "price": null,
+    "grams": null
+  },
+  "colors": {
+    "white": {
+      "label": "Solid white",
+      "material_rate": null,
+      "hours_per_square": null,
+      "labor_hours_per_square": null,
+      "grams_per_square": null,
+      "days_per_square": null
+    },
+    "dem": {
+      "label": "DEM",
+      "material_rate": null,
+      "hours_per_square": null,
+      "labor_hours_per_square": null,
+      "grams_per_square": null,
+      "days_per_square": null
+    },
+    "satellite": {
+      "label": "Satellite",
+      "material_rate": null,
+      "hours_per_square": null,
+      "labor_hours_per_square": null,
+      "grams_per_square": null,
+      "days_per_square": null
+    },
+    "topo": {
+      "label": "USGS topo",
+      "material_rate": null,
+      "hours_per_square": null,
+      "labor_hours_per_square": null,
+      "grams_per_square": null,
+      "days_per_square": null
+    }
+  },
+  "shipping": [],
+  "boundaries_url": "data/watershed-boundaries.geojson"
+}

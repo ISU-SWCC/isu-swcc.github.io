@@ -1,0 +1,32 @@
+{
+  "intro": "The club sells physical teaching models and publishes Getting Into Soil & Water.",
+  "source": "Add a product only when Forms/ or Activities/ has the public description. The CAREER breakpoint-gauge line is not a club product page until a vault note says what the public may order.",
+  "items": [
+    {
+      "tag": "Teaching tool",
+      "title": "Groundwater Flow Model",
+      "description": "A physical model for showing how groundwater moves. The package includes the model, a thermoformed carrying case, an instruction manual, and an accessory kit. The 2026 package price is $795 before shipping. The order form is the current price sheet.",
+      "link_label": "Order form (PDF)",
+      "file": "Service/SWCC/Forms/SWCC_GroundwaterModel_OrderForm_2026.pdf",
+      "image": null,
+      "source": "Forms/SWCC_GroundwaterModel_OrderForm_2026.pdf"
+    },
+    {
+      "tag": "Publication",
+      "title": "Getting Into Soil & Water",
+      "description": "The club's annual publication for a general audience. Printed copies are shared at meetings and outreach. A public PDF is not linked here yet.",
+      "link_label": null,
+      "image": null,
+      "source": "Activities/GISW/ and Activities/GISW/Past Publications/"
+    },
+    {
+      "tag": "Teaching tool",
+      "title": "Watershed Flow Model",
+      "description": "A watershed built from 24-inch squares. Choose a basin from the club boundary dataset or a pour point, then the square layout and the surface.",
+      "link_label": "Design a model",
+      "link_href": "pages/watershed-model.html",
+      "image": null,
+      "source": "Service/SWCC/Website/Content/WatershedModel.json. The boundary file is the club dataset at Content/WatershedBoundaries.geojson."
+    }
+  ]
+}

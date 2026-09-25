@@ -4,14 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Events — SWCC Website</title>
+    <title>Events — Soil and Water Conservation Club</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../styles/events-page.css">
 </head>
 
 <body>
     <div id="menu-placeholder"></div>
-
     <main class="events-page">
         <div id="event-bg" class="event-background"></div>
         <div class="event-details-overlay">
@@ -21,243 +20,177 @@
                 <p id="main-description" class="description"></p>
                 <div id="event-countdown" class="countdown-timer"></div>
                 <div class="button-group">
-                    <button id="download-ics-btn" class="download-btn">Add to Calendar (.ics)</button>
-                    <button id="pause-btn" class="pause-btn">Pause Auto-Scroll</button>
+                    <button id="download-ics-btn" class="download-btn" type="button">Add to Calendar (.ics)</button>
+                    <button id="pause-btn" class="pause-btn" type="button">Pause</button>
                 </div>
                 <div id="thumbnail-gallery-wrapper" class="thumbnail-gallery-wrapper">
-                    <button id="prev-btn" class="nav-arrow prev">&lt;</button>
-                    <div id="thumbnail-gallery" class="thumbnail-gallery">
-                        <!-- Thumbnails injected here -->
-                    </div>
-                    <button id="next-btn" class="nav-arrow next">&gt;</button>
+                    <button id="prev-btn" class="nav-arrow prev" type="button" aria-label="Previous event">&lt;</button>
+                    <div id="thumbnail-gallery" class="thumbnail-gallery"></div>
+                    <button id="next-btn" class="nav-arrow next" type="button" aria-label="Next event">&gt;</button>
                 </div>
             </div>
         </div>
     </main>
-
+    <script src="../assets/js/site.js"></script>
     <script>
         let events = [];
         let currentIndex = 0;
-        let isPaused = false;
+        let isPaused = true;
         let cycleInterval;
-
-        async function init() {
-            try {
-                const response = await fetch('../events/events.json');
-                events = await response.json();
-
-                const now = new Date();
-                // Sort by date/time ascending
-                events.sort((a, b) => new Date(a.date + 'T' + a.time) - new Date(b.date + 'T' + b.time));
-
-                // Find index of first upcoming event
-                currentIndex = events.findIndex(e => new Date(e.date + 'T' + e.time) >= now);
-                if (currentIndex === -1) currentIndex = 0; // If all events past, start with first one
-
-                renderThumbnails();
-                displayEvent(currentIndex);
-                startCycle();
-            } catch (error) {
-                console.error('Error loading events:', error);
-            }
-        }
-
-        function renderThumbnails() {
-            const gallery = document.getElementById('thumbnail-gallery');
-            gallery.innerHTML = '';
-            events.forEach((event, index) => {
-                const container = document.createElement('div');
-                container.className = 'thumbnail-container';
-                container.id = `thumb-${index}`;
-                container.onclick = () => {
-                    currentIndex = index;
-                    displayEvent(index);
-                    if (!isPaused) restartCycle();
-                };
-
-                const dateObj = new Date(event.date + 'T' + event.time);
-                const month = dateObj.toLocaleString('en-US', { month: 'short' });
-                const day = dateObj.getDate().toString().padStart(2, '0');
-                const formattedDate = `${month}. ${day}`;
-
-                container.innerHTML = `
-                    <img src="${event.thumbnail}" alt="${event.title}">
-                    <div class="thumbnail-overlay">
-                        <span class="title">${event.title}</span>
-                        <span class="date">${formattedDate}</span>
-                    </div>
-                `;
-                gallery.appendChild(container);
-            });
-            updateNavArrows();
-        }
-
         let countdownInterval;
 
-        function displayEvent(index) {
+        function showEvent(index) {
             const event = events[index];
-            const bg = document.getElementById('event-bg');
-            const info = document.getElementById('event-info');
-
-            // Highlight thumbnail
-            document.querySelectorAll('.thumbnail-container').forEach(t => t.classList.remove('active'));
+            const bg = document.getElementById("event-bg");
+            const info = document.getElementById("event-info");
+            document.querySelectorAll(".thumbnail-container").forEach((thumb) => thumb.classList.remove("active"));
             const activeThumb = document.getElementById(`thumb-${index}`);
-            activeThumb.classList.add('active');
-
-            // Scroll thumbnail into view
-            activeThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-
-            updateNavArrows();
-
-            // Fade out
-            info.classList.remove('active');
-
+            activeThumb.classList.add("active");
+            activeThumb.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+            document.getElementById("prev-btn").disabled = index === 0;
+            document.getElementById("next-btn").disabled = index === events.length - 1;
+            info.classList.remove("active");
             setTimeout(() => {
-                bg.style.backgroundImage = `url(${event.image})`;
-                document.getElementById('main-title').textContent = event.title;
-
-                const dateObj = new Date(event.date + 'T' + event.time);
-                const fullDateStr = dateObj.toLocaleString('en-US', {
-                    weekday: 'long',
-                    month: 'long',
-                    day: 'numeric',
-                    year: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit'
-                });
-
-                document.getElementById('main-date-location').innerHTML = `${fullDateStr}<br>${event.location}`;
-                document.getElementById('main-description').textContent = event.description;
-
-                // Update countdown
-                updateCountdown(dateObj);
+                if (event.image) {
+                    bg.style.backgroundImage = `url(${assetPath(event.image)})`;
+                    bg.classList.remove("no-photo");
+                } else {
+                    bg.style.backgroundImage = "none";
+                    bg.classList.add("no-photo");
+                }
+                document.getElementById("main-title").textContent = event.title;
+                const where = formatEventWhen(event);
+                document.getElementById("main-date-location").innerHTML = event.location
+                    ? `${escapeHtml(where)}<br>${escapeHtml(event.location)}`
+                    : escapeHtml(where);
+                document.getElementById("main-description").textContent = event.description;
+                const countdown = document.getElementById("event-countdown");
+                const download = document.getElementById("download-ics-btn");
                 if (countdownInterval) clearInterval(countdownInterval);
-                countdownInterval = setInterval(() => updateCountdown(dateObj), 1000);
-
-                // Update download button handler
-                document.getElementById('download-ics-btn').onclick = () => downloadICS(event);
-
-                // Fade in
-                info.classList.add('active');
-            }, 500);
+                if (eventIsPast(event, new Date())) {
+                    countdown.textContent = "This event has passed.";
+                } else if (event.time && event.date.length === 10) {
+                    const tick = () => {
+                        const diff = eventDate(event) - new Date();
+                        if (diff <= 0) {
+                            countdown.textContent = "This event has passed.";
+                            return;
+                        }
+                        const days = Math.floor(diff / 86400000);
+                        countdown.textContent = days >= 2
+                            ? `This event starts in ${days} days.`
+                            : `This event starts in ${Math.floor(diff / 3600000)} hours.`;
+                    };
+                    tick();
+                    countdownInterval = setInterval(tick, 60000);
+                } else {
+                    countdown.textContent = "Date is the month on file. A start time is not recorded.";
+                }
+                const canSave = event.time && event.date.length === 10;
+                download.hidden = !canSave;
+                download.onclick = () => { if (canSave) downloadICS(event); };
+                info.classList.add("active");
+            }, 300);
         }
-
-        function updateCountdown(eventDate) {
-            const now = new Date();
-            const diff = eventDate - now;
-            const countdownEl = document.getElementById('event-countdown');
-
-            if (diff <= 0) {
-                countdownEl.innerHTML = "This event has started or passed.";
-                return;
-            }
-
-            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-            if (days >= 2) {
-                countdownEl.innerHTML = `This event starts in: <span class="time-val">${days} days</span>`;
-            } else {
-                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-                countdownEl.innerHTML = `This event starts in: <span class="time-val">${hours} hrs ${minutes} mins ${seconds} secs</span>`;
-            }
-        }
-
-        function updateNavArrows() {
-            const nextBtn = document.getElementById('next-btn');
-            const prevBtn = document.getElementById('prev-btn');
-
-            prevBtn.disabled = currentIndex === 0;
-            nextBtn.disabled = currentIndex === events.length - 1;
-        }
-
-        document.getElementById('prev-btn').onclick = () => {
-            if (currentIndex > 0) {
-                currentIndex--;
-                displayEvent(currentIndex);
-                if (!isPaused) restartCycle();
-            }
-        };
-
-        document.getElementById('next-btn').onclick = () => {
-            if (currentIndex < events.length - 1) {
-                currentIndex++;
-                displayEvent(currentIndex);
-                if (!isPaused) restartCycle();
-            }
-        };
 
         function downloadICS(event) {
-            const dateStr = event.date.replace(/-/g, '');
-            const timeStr = event.time.replace(/:/g, '') + '00';
-            const start = `${dateStr}T${timeStr}`;
-
-            // Assume 2 hour duration for events
-            const endHour = (parseInt(event.time.slice(0, 2)) + 2).toString().padStart(2, '0');
-            const end = `${dateStr}T${endHour}${event.time.slice(3, 5)}00`;
-
-            const icsContent = [
-                'BEGIN:VCALENDAR',
-                'VERSION:2.0',
-                'PRODID:-//SWCC Website//EN',
-                'BEGIN:VEVENT',
+            const dateStamp = event.date.replace(/-/g, "");
+            const start = `${dateStamp}T${event.time.replace(":", "")}00`;
+            const endHour = String(Number(event.time.slice(0, 2)) + 2).padStart(2, "0");
+            const end = `${dateStamp}T${endHour}${event.time.slice(3, 5)}00`;
+            const ics = [
+                "BEGIN:VCALENDAR",
+                "VERSION:2.0",
+                "PRODID:-//SWCC//EN",
+                "BEGIN:VEVENT",
                 `SUMMARY:${event.title}`,
                 `DTSTART:${start}`,
                 `DTEND:${end}`,
-                `LOCATION:${event.location}`,
+                `LOCATION:${event.location || ""}`,
                 `DESCRIPTION:${event.description}`,
-                'END:VEVENT',
-                'END:VCALENDAR'
-            ].join('\r\n');
-
-            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
+                "END:VEVENT",
+                "END:VCALENDAR",
+            ].join("\r\n");
+            const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+            const link = document.createElement("a");
             link.href = url;
-            link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}.ics`);
-            document.body.appendChild(link);
+            link.download = `${event.title.replace(/\s+/g, "_")}.ics`;
             link.click();
-            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function renderThumbs() {
+            const gallery = document.getElementById("thumbnail-gallery");
+            gallery.innerHTML = events.map((event, index) => {
+                const photo = event.thumbnail
+                    ? `<img src="${assetPath(event.thumbnail)}" alt="">`
+                    : "";
+                const when = eventParts(event);
+                const label = when.day == null
+                    ? new Date(when.year, when.month - 1, 1).toLocaleString("en-US", { month: "short" })
+                    : `${new Date(when.year, when.month - 1, 1).toLocaleString("en-US", { month: "short" })} ${String(when.day).padStart(2, "0")}`;
+                return `
+                    <div class="thumbnail-container${event.thumbnail ? "" : " no-photo"}" id="thumb-${index}">
+                        ${photo}
+                        <div class="thumbnail-overlay">
+                            <span class="title">${escapeHtml(event.title)}</span>
+                            <span class="date">${escapeHtml(label)}</span>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+            gallery.querySelectorAll(".thumbnail-container").forEach((thumb, index) => {
+                thumb.addEventListener("click", () => {
+                    currentIndex = index;
+                    showEvent(index);
+                });
+            });
         }
 
         function startCycle() {
             if (cycleInterval) clearInterval(cycleInterval);
+            if (isPaused) return;
             cycleInterval = setInterval(() => {
-                if (!isPaused) {
-                    currentIndex = (currentIndex + 1) % events.length;
-                    displayEvent(currentIndex);
-                }
+                currentIndex = (currentIndex + 1) % events.length;
+                showEvent(currentIndex);
             }, 15000);
         }
 
-        function restartCycle() {
-            clearInterval(cycleInterval);
+        loadMenu().catch((error) => console.error(error));
+        loadJSON("../data/events.json").then((payload) => {
+            const now = new Date();
+            events = payload.items.slice().sort((a, b) => eventDate(b) - eventDate(a));
+            const info = document.getElementById("event-info");
+            if (!events.length) {
+                document.getElementById("main-title").textContent = "No events posted";
+                document.getElementById("main-description").textContent = payload.intro || "";
+                document.getElementById("download-ics-btn").hidden = true;
+                document.getElementById("pause-btn").hidden = true;
+                document.getElementById("thumbnail-gallery-wrapper").hidden = true;
+                info.classList.add("active");
+                return;
+            }
+            const upcoming = events.findIndex((event) => !eventIsPast(event, now));
+            currentIndex = upcoming === -1 ? 0 : upcoming;
+            isPaused = upcoming === -1;
+            document.getElementById("pause-btn").textContent = isPaused ? "Play" : "Pause";
+            renderThumbs();
+            showEvent(currentIndex);
             startCycle();
-        }
+        }).catch((error) => console.error(error));
 
-        document.getElementById('pause-btn').onclick = () => {
+        document.getElementById("prev-btn").addEventListener("click", () => {
+            if (currentIndex > 0) showEvent(--currentIndex);
+        });
+        document.getElementById("next-btn").addEventListener("click", () => {
+            if (currentIndex < events.length - 1) showEvent(++currentIndex);
+        });
+        document.getElementById("pause-btn").addEventListener("click", () => {
             isPaused = !isPaused;
-            const btn = document.getElementById('pause-btn');
-            btn.textContent = isPaused ? 'Resume Auto-Scroll' : 'Pause Auto-Scroll';
-        };
-
-        // Load Menu
-        fetch('../components/menu.html')
-            .then(response => response.text())
-            .then(data => {
-                // Adjust menu paths for subdirectory
-                let updatedData = data.replace(/href="index\.html"/g, 'href="../index.html"');
-                updatedData = updatedData.replace(/href="products\.html"/g, 'href="products.html"');
-                updatedData = updatedData.replace(/href="events\.html"/g, 'href="events.html"');
-                updatedData = updatedData.replace(/href="contact\.html"/g, 'href="contact.html"');
-                updatedData = updatedData.replace(/href="about\.html"/g, 'href="about.html"');
-                updatedData = updatedData.replace(/src="assets\//g, 'src="../assets/');
-                document.getElementById('menu-placeholder').innerHTML = updatedData;
-            })
-            .catch(error => console.error('Error loading menu:', error));
-
-        init();
+            document.getElementById("pause-btn").textContent = isPaused ? "Play" : "Pause";
+            if (cycleInterval) clearInterval(cycleInterval);
+            startCycle();
+        });
     </script>
 </body>
 

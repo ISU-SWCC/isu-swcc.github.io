@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watershed Flow Model — Soil and Water Conservation Club</title>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+    <link rel="stylesheet" href="../styles/watershed-model.css">
+</head>
+
+<body>
+    <div id="menu-placeholder"></div>
+    <main class="model-page">
+        <h1>Watershed Flow Model</h1>
+        <p class="lede" id="intro"></p>
+        <div class="model-layout">
+            <div>
+                <div id="map" role="application" aria-label="Watershed map"></div>
+                <p class="map-note" id="map-note"></p>
+            </div>
+            <form class="controls" id="model-form">
+                <h2>Watershed</h2>
+                <div class="choices" role="group" aria-label="How to choose a watershed">
+                    <button type="button" id="mode-catalog" aria-pressed="true">Boundary dataset</button>
+                    <button type="button" id="mode-point" aria-pressed="false">Pour point</button>
+                </div>
+                <div id="catalog-tools">
+                    <label for="basin-search">Search the club dataset</label>
+                    <input id="basin-search" type="text" autocomplete="off">
+                    <ul class="results" id="basin-results"></ul>
+                </div>
+                <p class="field-note" id="point-note" hidden></p>
+
+                <h2>Squares</h2>
+                <label for="square-count">Number of 24-inch squares</label>
+                <input id="square-count" type="number" min="1" max="100" step="1" value="4">
+                <div class="choices" role="group" aria-label="How the basin sits in the squares">
+                    <button type="button" id="align-north" aria-pressed="true">True north</button>
+                    <button type="button" id="align-max" aria-pressed="false">Largest fit</button>
+                </div>
+                <p class="size-readout" id="size-readout"></p>
+                <div class="painter" id="painter" aria-hidden="true"></div>
+                <p class="field-note">The basin is scaled to fit those squares. One square uses the full 24 by 24 inches. With more than one square, a 1/2 inch border is left around the outside so the squares can lock. True north keeps north at the top of the model. Largest fit turns the model so the basin prints as large as it can.</p>
+
+                <h2>Surface</h2>
+                <div class="choices" id="color-choices" role="group" aria-label="Surface"></div>
+                <p class="field-note" id="color-note"></p>
+
+                <h2>Accessory kits</h2>
+                <label for="kits">Quantity</label>
+                <input id="kits" type="number" min="0" step="1" value="0">
+                <p class="field-note" id="kit-note"></p>
+
+                <h2>Delivery</h2>
+                <label for="country">Country</label>
+                <input id="country" type="text" value="US" autocomplete="country">
+                <label for="region">State or region</label>
+                <input id="region" type="text" autocomplete="address-level1">
+                <label for="postal">Postal code</label>
+                <input id="postal" type="text" autocomplete="postal-code">
+                <label for="city">City</label>
+                <input id="city" type="text" autocomplete="address-level2">
+                <label for="street">Street</label>
+                <input id="street" type="text" autocomplete="street-address">
+                <label for="recipient">Name</label>
+                <input id="recipient" type="text" autocomplete="name">
+
+                <h2>Quote</h2>
+                <div class="quote" id="quote"></div>
+                <p class="field-note" id="eta"></p>
+                <button type="button" class="save-quote" id="save-quote">Save quote file</button>
+                <button type="button" class="order-btn" id="order-btn" disabled>Order</button>
+            </form>
+        </div>
+    </main>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <script src="../assets/js/site.js"></script>
+    <script src="../assets/js/watershed-model.js?v=20260924b"></script>
+</body>
+
+</html>

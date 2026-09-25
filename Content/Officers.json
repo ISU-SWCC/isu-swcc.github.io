@@ -1,0 +1,78 @@
+{
+  "intro": "Current officers. Role descriptions are the duties in the club constitution.",
+  "source": "Seated roles: https://www.stuorg.iastate.edu/swcc/officers read 2026-09-24. Candidate files, where they exist, are in Elections/2026-03-26/ and are applications, not a results list. Duties: Constitution/2025 SWCC Constitution.docx Article 6. Photos on disk: assets/headshots/BhuwanShah.jpg and RyanMcGehee.jpeg.",
+  "people": [
+    {
+      "role": "President",
+      "name": "Muntaha Ateeq",
+      "description": "Conducts meetings, organizes club events, and leads outreach.",
+      "photo": null,
+      "email": null,
+      "source": "Student Organizations officers page, 2026-09-24. Application: Elections/2026-03-26/Multiple - Muntaha Ateeq -2026 Office.pdf."
+    },
+    {
+      "role": "Vice President",
+      "name": "Bhuwan Shah",
+      "description": "Assists the president, runs officer elections, and is the risk management officer.",
+      "photo": "assets/headshots/BhuwanShah.jpg",
+      "email": null,
+      "source": "Student Organizations officers page, 2026-09-24, and Wiki/Entities/Programs/SWCC.md. Application: Elections/2026-03-26/Multiple - Bhuwan Shah.pdf."
+    },
+    {
+      "role": "Treasurer",
+      "name": "William Vlasek",
+      "description": "Keeps the club accounts, files university paperwork, and reports the budget.",
+      "photo": null,
+      "email": null,
+      "source": "Student Organizations officers page, 2026-09-24. No matching file in Elections/2026-03-26/."
+    },
+    {
+      "role": "Operations Officer",
+      "name": "Pooja Timilsina",
+      "description": "Records meeting minutes and handles logistics for projects such as the annual publication.",
+      "photo": null,
+      "email": null,
+      "source": "Student Organizations officers page, 2026-09-24. Application: Elections/2026-03-26/Multiple - Pooja Timilsina.pdf."
+    },
+    {
+      "role": "Communications Officer",
+      "name": "Asmita Shrestha",
+      "description": "Keeps the website and social media current and coordinates outreach.",
+      "photo": null,
+      "email": null,
+      "source": "Student Organizations officers page, 2026-09-24. Application: Elections/2026-03-26/Communications Officer-Asmita Shrestha.pdf. Duty: Constitution Article 6."
+    },
+    {
+      "role": "CALS Student Council Representative",
+      "name": "Revanth Mamidala",
+      "description": "Represents the club at CALS Council and reports college business back to the club.",
+      "photo": null,
+      "email": null,
+      "source": "Student Organizations officers page, 2026-09-24. Duty title: Constitution Article 6, CALS Student Council Representative."
+    },
+    {
+      "role": "Business Manager",
+      "name": "Courtney Strauser",
+      "description": "Handles club business with the university.",
+      "photo": null,
+      "email": null,
+      "source": "Student Organizations officers page, 2026-09-24. The constitution does not define this office."
+    },
+    {
+      "role": "Advisor",
+      "name": "Richard Cruse",
+      "description": "Advises the club and is a liaison with the university.",
+      "photo": null,
+      "email": null,
+      "source": "Student Organizations officers page, 2026-09-24. Advisor duties: Constitution Article 7."
+    },
+    {
+      "role": "Advisor",
+      "name": "Ryan McGehee",
+      "description": "Advises the club. Groundwater-model orders are addressed to this office.",
+      "photo": "assets/headshots/RyanMcGehee.jpeg",
+      "email": "rmcgehee@iastate.edu",
+      "source": "Student Organizations officers page, 2026-09-24. Email and attn line: Forms/SWCC_GroundwaterModel_OrderForm_2026.pdf."
+    }
+  ]
+}

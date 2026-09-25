@@ -1,0 +1,65 @@
+{
+  "intro": "Events below are ones written down in the club files. A meeting that is only announced in GroupMe is not listed until someone files a note.",
+  "items": [
+    {
+      "title": "Guest speaker and dinner",
+      "date": "2026-04-23",
+      "time": "18:00",
+      "location": "College of Design 0101",
+      "description": "Jon Hubbert, Iowa NRCS State Conservationist, and Jaia Fischer, Assistant State Conservationist for Management and Strategy. Doors at 5:30 p.m. The program was free; dinner tickets were optional. Parking was in the Elings lots.",
+      "image": null,
+      "thumbnail": null,
+      "id": 1
+    },
+    {
+      "title": "Officer elections",
+      "date": "2026-03-26",
+      "time": null,
+      "location": "",
+      "description": "Members met to elect officers. Candidate statements from that meeting are filed with the slides.",
+      "image": null,
+      "thumbnail": null,
+      "id": 2
+    },
+    {
+      "title": "Park and hike",
+      "date": "2026-03",
+      "time": null,
+      "location": "",
+      "description": "Club park and hike. Photos are filed for March 2026; the day and trail are not written down.",
+      "image": null,
+      "thumbnail": null,
+      "id": 3
+    },
+    {
+      "title": "Build-a-Watershed",
+      "date": "2026-02",
+      "time": null,
+      "location": "",
+      "description": "Build-a-Watershed activity. Photos and video are filed for February 2026.",
+      "image": null,
+      "thumbnail": null,
+      "id": 4
+    },
+    {
+      "title": "Groundwater flow model",
+      "date": "2026-02",
+      "time": null,
+      "location": "",
+      "description": "Groundwater flow model demonstration. Photos and video are filed for February 2026.",
+      "image": null,
+      "thumbnail": null,
+      "id": 5
+    },
+    {
+      "title": "ClubFest",
+      "date": "2026-01",
+      "time": null,
+      "location": "",
+      "description": "SWCC table at ISU ClubFest. Photos are filed for January 2026.",
+      "image": null,
+      "thumbnail": null,
+      "id": 6
+    }
+  ]
+}

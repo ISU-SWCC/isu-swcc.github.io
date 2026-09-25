@@ -1,0 +1,68 @@
+{
+  "intro": "Current officers. Role descriptions are the duties in the club constitution.",
+  "people": [
+    {
+      "role": "President",
+      "name": "Muntaha Ateeq",
+      "description": "Conducts meetings, organizes club events, and leads outreach.",
+      "photo": null,
+      "email": null
+    },
+    {
+      "role": "Vice President",
+      "name": "Bhuwan Shah",
+      "description": "Assists the president, runs officer elections, and is the risk management officer.",
+      "photo": "assets/headshots/BhuwanShah.jpg",
+      "email": null
+    },
+    {
+      "role": "Treasurer",
+      "name": "William Vlasek",
+      "description": "Keeps the club accounts, files university paperwork, and reports the budget.",
+      "photo": null,
+      "email": null
+    },
+    {
+      "role": "Operations Officer",
+      "name": "Pooja Timilsina",
+      "description": "Records meeting minutes and handles logistics for projects such as the annual publication.",
+      "photo": null,
+      "email": null
+    },
+    {
+      "role": "Communications Officer",
+      "name": "Asmita Shrestha",
+      "description": "Keeps the website and social media current and coordinates outreach.",
+      "photo": null,
+      "email": null
+    },
+    {
+      "role": "CALS Student Council Representative",
+      "name": "Revanth Mamidala",
+      "description": "Represents the club at CALS Council and reports college business back to the club.",
+      "photo": null,
+      "email": null
+    },
+    {
+      "role": "Business Manager",
+      "name": "Courtney Strauser",
+      "description": "Handles club business with the university.",
+      "photo": null,
+      "email": null
+    },
+    {
+      "role": "Advisor",
+      "name": "Richard Cruse",
+      "description": "Advises the club and is a liaison with the university.",
+      "photo": null,
+      "email": null
+    },
+    {
+      "role": "Advisor",
+      "name": "Ryan McGehee",
+      "description": "Advises the club. Groundwater-model orders are addressed to this office.",
+      "photo": "assets/headshots/RyanMcGehee.jpeg",
+      "email": "rmcgehee@iastate.edu"
+    }
+  ]
+}

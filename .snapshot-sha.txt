@@ -1,0 +1,5 @@
+sha: 2560d200f10dfb4be41d62ecbb8abb16b52774ae
+repo: https://github.com/ISU-SWCC/isu-swcc.github.io
+branch: main
+imported: 2026-09-24
+note: Working copy lives in this folder after the import. GitHub is the last published copy, not the place to edit.
