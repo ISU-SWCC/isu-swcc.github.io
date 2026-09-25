@@ -73,10 +73,6 @@ body {
     line-height: 1.45;
 }
 
-.controls {
-    padding-bottom: 62vh;
-}
-
 .fold {
     border-bottom: 1px solid #e6e6e8;
 }
@@ -102,6 +98,14 @@ body {
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: #6e6e73;
+}
+
+.fold-mark {
+    margin-left: auto;
+    font-size: 18px;
+    line-height: 1;
+    letter-spacing: 0;
+    color: #1d1d1f;
 }
 
 .fold.is-open h2 button {

@@ -25,7 +25,7 @@
             </div>
             <form class="controls" id="model-form">
                 <section class="fold is-open" id="fold-watershed">
-                    <h2><button type="button" aria-expanded="true"><span>01</span> Watershed</button></h2>
+                    <h2><button type="button" aria-expanded="true"><span>01</span> Watershed<i class="fold-mark" aria-hidden="true">−</i></button></h2>
                     <div class="fold-body">
                         <div class="choices" role="group" aria-label="How to choose a watershed">
                             <button type="button" id="mode-catalog" aria-pressed="true">Boundary dataset</button>
@@ -41,7 +41,7 @@
                 </section>
 
                 <section class="fold" id="fold-squares">
-                    <h2><button type="button" aria-expanded="false"><span>02</span> Squares</button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>02</span> Squares<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <label for="square-count">Number of 24-inch squares</label>
                         <input id="square-count" type="number" min="1" max="100" step="1" value="4">
@@ -56,7 +56,7 @@
                 </section>
 
                 <section class="fold" id="fold-surface">
-                    <h2><button type="button" aria-expanded="false"><span>03</span> Surface</button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>03</span> Surface<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <div class="choices" id="color-choices" role="group" aria-label="Surface"></div>
                         <p class="field-note" id="color-note"></p>
@@ -64,7 +64,7 @@
                 </section>
 
                 <section class="fold" id="fold-vertical">
-                    <h2><button type="button" aria-expanded="false"><span>04</span> Vertical scale</button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>04</span> Vertical scale<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <label for="exaggeration">Exaggeration</label>
                         <input id="exaggeration" type="number" min="0" max="100" step="0.1" value="1">
@@ -74,7 +74,7 @@
                 </section>
 
                 <section class="fold" id="fold-kits">
-                    <h2><button type="button" aria-expanded="false"><span>05</span> Accessory kits</button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>05</span> Accessory kits<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <label for="kits">Quantity</label>
                         <input id="kits" type="number" min="0" step="1" value="0">
@@ -83,7 +83,7 @@
                 </section>
 
                 <section class="fold" id="fold-delivery">
-                    <h2><button type="button" aria-expanded="false"><span>06</span> Delivery</button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>06</span> Delivery<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <label for="country">Country</label>
                         <input id="country" type="text" value="US" autocomplete="country">
@@ -101,7 +101,7 @@
                 </section>
 
                 <section class="fold" id="fold-quote">
-                    <h2><button type="button" aria-expanded="false"><span>07</span> Quote</button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>07</span> Quote<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <div class="quote" id="quote"></div>
                         <p class="field-note" id="eta"></p>
@@ -116,7 +116,7 @@
     </main>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20260925b"></script>
+    <script src="../assets/js/watershed-model.js?v=20260925c"></script>
 </body>
 
 </html>
