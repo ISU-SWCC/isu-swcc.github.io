@@ -1,5 +1,6 @@
-sha: 2560d200f10dfb4be41d62ecbb8abb16b52774ae
+sha: ac485760d8f02999eceb28bd353ecbbe0153c378
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
-imported: 2026-09-24
-note: Working copy lives in this folder after the import. GitHub is the last published copy, not the place to edit.
+published: 2026-09-24
+note: This commit is the copy pushed to GitHub Pages. The vault folder is the working copy. Publish again the same way when the live site should change.
+
