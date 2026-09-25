@@ -25,7 +25,6 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: #16352c;
     background-size: cover;
     background-position: center;
     transition: background-image 1s ease-in-out;
@@ -238,16 +237,6 @@ body {
     width: 100%;
     height: 100%;
     object-fit: cover;
-}
-
-.thumbnail-container.no-photo {
-    background: #16352c;
-}
-
-.thumbnail-container.no-photo .thumbnail-overlay {
-    opacity: 1;
-    background: transparent;
-    color: #fff;
 }
 
 .thumbnail-overlay {

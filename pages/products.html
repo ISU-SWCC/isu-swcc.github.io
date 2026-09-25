@@ -4,51 +4,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Products — Soil and Water Conservation Club</title>
+    <title>Products — SWCC Website</title>
     <link rel="stylesheet" href="../styles/products-page.css">
 </head>
 
 <body>
     <div id="menu-placeholder"></div>
+
     <main class="products-page">
         <header class="page-header">
             <h1>Products</h1>
-            <p id="products-intro"></p>
+            <p>Tools and models for water resource simulation, watershed analysis, and environmental monitoring.</p>
         </header>
-        <div class="products-grid" id="products-grid"></div>
-    </main>
-    <script src="../assets/js/site.js"></script>
-    <script>
-        function productHref(href) {
-            if (/^(https?:|mailto:|\/)/.test(href)) return href;
-            if (href.startsWith("pages/")) return href.slice("pages/".length);
-            return assetPath(href);
-        }
 
-        loadMenu().catch((error) => console.error(error));
-        loadJSON("../data/products.json").then((products) => {
-            document.getElementById("products-intro").textContent = products.intro;
-            const grid = document.getElementById("products-grid");
-            grid.innerHTML = products.items.map((item) => {
-                const image = item.image
-                    ? `<img class="product-image" src="${assetPath(item.image)}" alt="">`
-                    : "";
-                const link = item.link_href && item.link_label
-                    ? `<a class="product-link" href="${productHref(item.link_href)}">${escapeHtml(item.link_label)}</a>`
-                    : "";
-                return `
-                    <article class="product-card">
-                        ${image}
-                        <div class="product-body">
-                            <span class="product-tag">${escapeHtml(item.tag)}</span>
-                            <h2>${escapeHtml(item.title)}</h2>
-                            <p>${escapeHtml(item.description)}</p>
-                            ${link}
-                        </div>
-                    </article>
-                `;
-            }).join("");
-        }).catch((error) => console.error(error));
+        <div class="products-grid">
+            <article class="product-card">
+                <img class="product-image" src="https://picsum.photos/seed/groundwater/420/262"
+                    alt="Groundwater flow model visualization">
+                <div class="product-body">
+                    <span class="product-tag">Educational Tool</span>
+                    <h2>Groundwater Flow Model</h2>
+                    <p>
+                        Simulate subsurface flow and transport with our modular groundwater modeling suite.
+                        Supports confined and unconfined aquifers, multiple layers, and integration with
+                        surface water and land-use data. Built for researchers and practitioners.
+                    </p>
+                    <a href="#" class="product-link">Order Now →</a>
+                </div>
+            </article>
+
+            <article class="product-card">
+                <img class="product-image" src="https://picsum.photos/seed/watershed/420/262"
+                    alt="Watershed flow model">
+                <div class="product-body">
+                    <span class="product-tag">Educational Tool</span>
+                    <h2>Watershed Flow Model</h2>
+                    <p>
+                        Catchment-scale hydrology and runoff routing for flood risk, water quality,
+                        and ecosystem studies. Combines rainfall-runoff, channel flow, and optional
+                        groundwater coupling in a single, configurable framework.
+                    </p>
+                    <a href="watershed-model.html" class="product-link">Design a model →</a>
+                </div>
+            </article>
+
+            <article class="product-card">
+                <img class="product-image" src="https://picsum.photos/seed/gauge/420/262" alt="Precipitation gauge">
+                <div class="product-body">
+                    <span class="product-tag">Commercial Product</span>
+                    <h2>Precipitation Gauge</h2>
+                    <p>
+                        Rugged, field-ready precipitation gauge with high temporal resolution and
+                        optional connectivity for real-time monitoring. Ideal for networks and
+                        integration with our watershed and groundwater models.
+                    </p>
+                    <a href="#" class="product-link">Available Fall 2027 →</a>
+                </div>
+            </article>
+        </div>
+    </main>
+
+    <script>
+        fetch('../components/menu.html')
+            .then(response => response.text())
+            .then(data => {
+                // Adjust menu paths for subdirectory
+                let updatedData = data.replace(/href="index\.html"/g, 'href="../index.html"');
+                updatedData = updatedData.replace(/href="events\.html"/g, 'href="events.html"');
+                updatedData = updatedData.replace(/href="products\.html"/g, 'href="products.html"');
+                updatedData = updatedData.replace(/href="contact\.html"/g, 'href="contact.html"');
+                updatedData = updatedData.replace(/href="about\.html"/g, 'href="about.html"');
+                updatedData = updatedData.replace(/src="assets\//g, 'src="../assets/');
+                updatedData = updatedData.replace(/src="\/assets\//g, 'src="../assets/');
+                document.getElementById('menu-placeholder').innerHTML = updatedData;
+            })
+            .catch(error => console.error('Error loading menu:', error));
     </script>
 </body>
 

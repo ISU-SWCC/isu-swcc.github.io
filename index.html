@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soil and Water Conservation Club</title>
+    <title>SWCC Website</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@900&display=swap" rel="stylesheet">
     <style>
         * {
@@ -116,38 +116,6 @@
                 height: 35px;
             }
         }
-
-        #home-facts {
-            position: fixed;
-            left: 24px;
-            right: 24px;
-            bottom: 24px;
-            z-index: 5;
-            max-width: 640px;
-            background: rgba(255, 255, 255, 0.94);
-            border-radius: 16px;
-            padding: 16px 20px;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
-        }
-
-        #home-facts p {
-            margin: 0 0 8px;
-        }
-
-        #home-facts a {
-            color: #C8102E;
-            font-weight: 600;
-            margin-right: 16px;
-        }
-
-        .sound-btn {
-            border: 2px solid #1d1d1f;
-            background: #fff;
-            border-radius: 30px;
-            padding: 6px 14px;
-            font-weight: 600;
-            cursor: pointer;
-        }
     </style>
 
 </head>
@@ -185,42 +153,36 @@
         Your browser does not support the video tag.
     </video>
 
-    <div id="home-facts"></div>
-
-    <script src="assets/js/site.js"></script>
     <script>
-        const video = document.getElementById('background-video');
-        const soundBtn = document.createElement('button');
-        soundBtn.className = 'sound-btn';
-        soundBtn.type = 'button';
-        soundBtn.textContent = 'Sound off';
+        fetch('components/menu.html')
+            .then(response => response.text())
+            .then(data => {
+                // Adjust menu paths if loaded from root
+                let updatedData = data.replace(/href="index\.html"/g, 'href="index.html"');
+                updatedData = updatedData.replace(/href="events\.html"/g, 'href="pages/events.html"');
+                updatedData = updatedData.replace(/href="products\.html"/g, 'href="pages/products.html"');
+                updatedData = updatedData.replace(/href="contact\.html"/g, 'href="pages/contact.html"');
+                updatedData = updatedData.replace(/href="about\.html"/g, 'href="pages/about.html"');
+                updatedData = updatedData.replace(/src="\.?\/assets\//g, 'src="assets/');
+                document.getElementById('menu-placeholder').innerHTML = updatedData;
+            })
+            .catch(error => console.error('Error loading menu:', error));
 
-        function setSound(muted) {
-            video.muted = muted;
-            soundBtn.textContent = muted ? 'Sound off' : 'Sound on';
-        }
-
-        soundBtn.addEventListener('click', () => setSound(!video.muted));
-        document.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') setSound(!video.muted);
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('background-video');
+            video.play().catch(error => console.error('Video play failed:', error));
         });
 
-        loadMenu();
-        loadJSON('data/site.json').then((site) => {
-            const facts = document.getElementById('home-facts');
-            facts.innerHTML = `
-                <p>${escapeHtml(site.home_line)}</p>
-                <p>${escapeHtml(site.meeting)}</p>
-                <p>
-                    <a href="pages/events.html">Events</a>
-                    <a href="pages/products.html">Groundwater model</a>
-                    <a href="pages/contact.html">Officers</a>
-                </p>
-            `;
-            facts.appendChild(soundBtn);
-        }).catch((error) => console.error(error));
-
-        video.play().catch((error) => console.error('Video play failed:', error));
+        document.addEventListener('keydown', (event) => {
+            const video = document.getElementById('background-video');
+            if (event.key === 'Enter') {
+                if (video.muted) {
+                    video.muted = false;
+                } else {
+                    video.muted = true;
+                }
+            }
+        });
     </script>
 </body>
 

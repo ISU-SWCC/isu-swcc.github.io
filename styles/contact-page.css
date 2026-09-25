@@ -86,36 +86,6 @@ body {
     transition: transform 0.5s ease;
 }
 
-.headshot-fallback {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    font-family: 'Montserrat', sans-serif;
-    font-weight: 900;
-    font-size: 3rem;
-    color: #1d1d1f;
-    background: #e8e8ed;
-}
-
-.reach {
-    margin-top: 64px;
-    padding: 32px;
-    background: var(--card-bg);
-    border-radius: 20px;
-}
-
-.reach h2 {
-    font-family: 'Montserrat', sans-serif;
-    margin-bottom: 12px;
-}
-
-.reach a {
-    color: var(--primary-color);
-    font-weight: 600;
-}
-
 .officer-card:hover .headshot-container img {
     transform: scale(1.05);
 }

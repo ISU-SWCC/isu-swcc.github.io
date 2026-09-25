@@ -748,18 +748,37 @@ function bootWatershedPage() {
 }
 
 function mapStyle(color) {
-    const tiles = {
-        dem: ["https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"],
-        satellite: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-        topo: ["https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}"],
-    }[color];
-    if (!tiles) {
+    const bases = {
+        dem: {
+            tiles: ["https://maps-for-free.com/layer/relief/z{z}/row{y}/{z}_{x}-{y}.jpg"],
+            maxzoom: 8,
+            attribution: "Colored relief © maps-for-free.com",
+        },
+        satellite: {
+            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+            maxzoom: 19,
+            attribution: "Satellite imagery © Esri",
+        },
+        topo: {
+            tiles: ["https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}"],
+            maxzoom: 16,
+            attribution: "USGS Topo",
+        },
+    };
+    const base = bases[color];
+    if (!base) {
         return { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#f7f7f5" } }] };
     }
     return {
         version: 8,
         sources: {
-            base: { type: "raster", tiles, tileSize: 256, attribution: "Preview imagery. The print file is produced from the basin and the square layout." },
+            base: {
+                type: "raster",
+                tiles: base.tiles,
+                tileSize: 256,
+                maxzoom: base.maxzoom,
+                attribution: base.attribution,
+            },
         },
         layers: [{ id: "base", type: "raster", source: "base" }],
     };
