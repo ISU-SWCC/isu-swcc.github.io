@@ -333,6 +333,50 @@ function deliveryDays(state) {
     };
 }
 
+const RELIEF_STOPS = [
+    [0, [214, 230, 190]],
+    [80, [126, 186, 104]],
+    [250, [56, 140, 72]],
+    [700, [168, 176, 72]],
+    [1200, [196, 156, 58]],
+    [1800, [176, 104, 48]],
+    [2600, [122, 62, 46]],
+    [3600, [236, 236, 232]],
+];
+
+function reliefColor(elev) {
+    if (elev <= RELIEF_STOPS[0][0]) return RELIEF_STOPS[0][1];
+    for (let i = 1; i < RELIEF_STOPS.length; i += 1) {
+        const [high, color] = RELIEF_STOPS[i];
+        const [low, prev] = RELIEF_STOPS[i - 1];
+        if (elev <= high) {
+            const t = (elev - low) / (high - low);
+            return prev.map((channel, index) => Math.round(channel + (color[index] - channel) * t));
+        }
+    }
+    return RELIEF_STOPS[RELIEF_STOPS.length - 1][1];
+}
+
+function roundDownTenth(value) {
+    if (!Number.isFinite(value)) return 0;
+    return Math.floor((value + 1e-9) * 10) / 10;
+}
+
+function maxExaggeration(reliefM, metersPerInch) {
+    if (!(reliefM > 0) || !(metersPerInch > 0)) return 100;
+    return Math.min(100, roundDownTenth((17.5 * metersPerInch) / reliefM));
+}
+
+function appliedExaggeration(requested, reliefM, metersPerInch) {
+    const asked = Math.min(100, Math.max(0, Number(requested) || 0));
+    return Math.min(asked, maxExaggeration(reliefM, metersPerInch));
+}
+
+function terrainHeight(elev, elevMin, metersPerInch, exaggeration) {
+    const rise = metersPerInch > 0 ? (Math.max(0, elev - elevMin) / metersPerInch) * exaggeration : 0;
+    return { baseIn: 0.5, totalIn: 0.5 + rise };
+}
+
 function orderPayload(state) {
     const lines = quoteLines(state);
     const missing = lines.filter((line) => line.amount == null).map((line) => line.label);
@@ -368,7 +412,86 @@ function orderPayload(state) {
         total,
         missing,
         delivery: deliveryDays(state),
+        vertical: state.vertical || null,
         quote_complete: missing.length === 0 && Boolean(state.feature) && state.squares.size > 0,
+    };
+}
+
+async function sampleElevations(feature) {
+    const box = featureBbox(feature);
+    const n = 9;
+    const lats = [];
+    const lngs = [];
+    const inside = [];
+    for (let row = 0; row < n; row += 1) {
+        for (let col = 0; col < n; col += 1) {
+            const lng = box[0] + ((col + 0.5) / n) * (box[2] - box[0]);
+            const lat = box[1] + ((row + 0.5) / n) * (box[3] - box[1]);
+            lngs.push(lng);
+            lats.push(lat);
+            inside.push(pointInFeature(lng, lat, feature));
+        }
+    }
+    const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats.join(",")}&longitude=${lngs.join(",")}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(String(response.status));
+    const data = await response.json();
+    const values = data.elevation.map((value, index) => (inside[index] ? value : null));
+    const present = values.filter((value) => value != null);
+    if (!present.length) throw new Error("no elevation");
+    return {
+        n,
+        values,
+        box,
+        min: Math.min(...present),
+        max: Math.max(...present),
+        key: featureName(feature, 0) + box.join(","),
+    };
+}
+
+function paintRelief(grid, exaggeration) {
+    const n = grid.n;
+    const canvas = document.createElement("canvas");
+    canvas.width = n * 8;
+    canvas.height = n * 8;
+    const ctx = canvas.getContext("2d");
+    const image = ctx.createImageData(n, n);
+    const cellM = Math.max(1, ((grid.box[2] - grid.box[0]) * 111320 * Math.cos((((grid.box[1] + grid.box[3]) / 2) * Math.PI) / 180)) / n);
+    const at = (row, col) => {
+        if (row < 0 || col < 0 || row >= n || col >= n) return null;
+        return grid.values[row * n + col];
+    };
+    for (let row = 0; row < n; row += 1) {
+        for (let col = 0; col < n; col += 1) {
+            const elev = at(row, col);
+            const pixel = ((n - 1 - row) * n + col) * 4;
+            if (elev == null) {
+                image.data[pixel + 3] = 0;
+                continue;
+            }
+            const east = at(row, col + 1);
+            const north = at(row + 1, col);
+            const dzdx = ((east == null ? elev : east) - elev) / cellM;
+            const dzdy = ((north == null ? elev : north) - elev) / cellM;
+            const light = 0.78 + Math.max(-0.28, Math.min(0.28, (dzdy - dzdx) * exaggeration * 2));
+            const color = reliefColor(elev).map((channel) => Math.max(0, Math.min(255, Math.round(channel * light))));
+            image.data[pixel] = color[0];
+            image.data[pixel + 1] = color[1];
+            image.data[pixel + 2] = color[2];
+            image.data[pixel + 3] = 255;
+        }
+    }
+    const sample = document.createElement("canvas");
+    sample.width = n;
+    sample.height = n;
+    sample.getContext("2d").putImageData(image, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(sample, 0, 0, canvas.width, canvas.height);
+    const [west, south, east, north] = grid.box;
+    return {
+        url: canvas.toDataURL("image/png"),
+        coordinates: [[west, north], [east, north], [east, south], [west, south]],
+        exaggeration,
     };
 }
 
@@ -389,6 +512,10 @@ function bootWatershedPage() {
         squares: new Set(),
         scale: null,
         color: "white",
+        exaggeration: 1,
+        elevGrid: null,
+        reliefImage: null,
+        elevLoading: null,
         kits: 0,
         country: "US",
         region: "",
@@ -450,6 +577,12 @@ function bootWatershedPage() {
     });
     document.getElementById("align-north").addEventListener("click", () => setAlignment("north"));
     document.getElementById("align-max").addEventListener("click", () => setAlignment("max"));
+    document.getElementById("exaggeration").addEventListener("input", (event) => {
+        const next = Number(event.target.value);
+        state.exaggeration = Number.isFinite(next) ? Math.min(100, Math.max(0, next)) : 0;
+        state.reliefImage = null;
+        render();
+    });
     document.getElementById("kits").addEventListener("input", (event) => {
         state.kits = Math.max(0, Math.floor(finite(event.target.value) || 0));
         render();
@@ -604,8 +737,60 @@ function bootWatershedPage() {
             document.getElementById("size-readout").textContent = `${fit.cols} × ${fit.rows} squares. The model is ${fit.outerWidthIn} in × ${fit.outerHeightIn} in. 1 inch represents ${ground} of ground. ${border} ${facing}`;
         }
         renderLayout();
+        renderVertical();
         renderQuote();
+        ensureElevation();
         drawMap();
+    }
+
+    function renderVertical() {
+        const note = document.getElementById("vert-readout");
+        const fit = state.fit;
+        const grid = state.elevGrid;
+        if (!fit || !grid) {
+            state.vertical = null;
+            note.textContent = grid ? "Choose a basin to scale the height." : "Elevation for this basin is loading.";
+            return;
+        }
+        const reliefM = Math.max(0, grid.max - grid.min);
+        const limit = maxExaggeration(reliefM, fit.metersPerInch);
+        const applied = appliedExaggeration(state.exaggeration, reliefM, fit.metersPerInch);
+        const peak = terrainHeight(grid.max, grid.min, fit.metersPerInch, applied);
+        state.vertical = {
+            requested: state.exaggeration,
+            applied,
+            limit,
+            elev_min_m: grid.min,
+            elev_max_m: grid.max,
+            base_in: 0.5,
+            max_height_in: peak.totalIn,
+        };
+        const limited = applied + 0.001 < state.exaggeration
+            ? ` The requested ${state.exaggeration} is above the cap, so ${applied.toFixed(1)} is used.`
+            : "";
+        note.textContent = `Elevation spans ${Math.round(grid.min).toLocaleString("en-US")}–${Math.round(grid.max).toLocaleString("en-US")} m. Applied exaggeration is ${applied.toFixed(1)} (maximum ${limit.toFixed(1)}). The base is 0.5 in and the highest point is ${peak.totalIn.toFixed(2)} in.${limited}`;
+    }
+
+    function ensureElevation() {
+        if (!state.feature) return;
+        const key = featureName(state.feature, 0) + featureBbox(state.feature).join(",");
+        if (state.elevGrid && state.elevGrid.key === key) {
+            if (!state.reliefImage) state.reliefImage = paintRelief(state.elevGrid, state.vertical ? state.vertical.applied : state.exaggeration);
+            return;
+        }
+        if (state.elevLoading === key) return;
+        state.elevLoading = key;
+        sampleElevations(state.feature).then((grid) => {
+            if (!state.feature || featureName(state.feature, 0) + featureBbox(state.feature).join(",") !== key) return;
+            state.elevGrid = grid;
+            state.elevLoading = null;
+            state.reliefImage = null;
+            render();
+        }).catch(() => {
+            state.elevLoading = null;
+            const note = document.getElementById("vert-readout");
+            if (note) note.textContent = "Elevation did not load. The map still shows the basin.";
+        });
     }
 
     function renderQuote() {
@@ -641,6 +826,8 @@ function bootWatershedPage() {
             fit: state.fit,
             alignment: state.alignment,
             color: state.color,
+            exaggeration: state.exaggeration,
+            vertical: state.vertical,
             kits: state.kits,
             country: document.getElementById("country").value,
             region: document.getElementById("region").value,
@@ -655,7 +842,7 @@ function bootWatershedPage() {
         if (!map) return;
         const styleColor = state.color;
         const fit = state.fit;
-        const signature = `${styleColor}|${state.feature ? featureName(state.feature, 0) : ""}|${fit ? `${fit.cols}x${fit.rows}@${fit.rotationDeg}` : ""}|${state.pourPoint}`;
+        const signature = `${styleColor}|${state.feature ? featureName(state.feature, 0) : ""}|${fit ? `${fit.cols}x${fit.rows}@${fit.rotationDeg}` : ""}|${state.pourPoint}|${state.exaggeration}|${state.reliefImage ? state.reliefImage.exaggeration : ""}|${state.elevGrid ? state.elevGrid.key : ""}`;
         if (map._swccSignature === signature) return;
         map._swccSignature = signature;
         const token = (map._swccToken || 0) + 1;
@@ -695,13 +882,22 @@ function bootWatershedPage() {
                     paint: { "line-color": "#8a6a12", "line-width": 2, "line-dasharray": [2, 1] },
                 });
             }
+            if (styleColor === "dem" && state.reliefImage) {
+                map.addSource("relief", {
+                    type: "image",
+                    url: state.reliefImage.url,
+                    coordinates: state.reliefImage.coordinates,
+                });
+                map.addLayer({ id: "relief", type: "raster", source: "relief" });
+                document.getElementById("map").dataset.dem = "shown";
+            }
             if (state.feature) {
                 map.addSource("basin", { type: "geojson", data: state.feature });
                 map.addLayer({
                     id: "basin-fill",
                     type: "fill",
                     source: "basin",
-                    paint: { "fill-color": "#C8102E", "fill-opacity": 0.28 },
+                    paint: { "fill-color": "#C8102E", "fill-opacity": styleColor === "dem" ? 0.08 : 0.28 },
                 });
                 map.addLayer({
                     id: "basin-line",
@@ -749,11 +945,6 @@ function bootWatershedPage() {
 
 function mapStyle(color) {
     const bases = {
-        dem: {
-            tiles: ["https://maps-for-free.com/layer/relief/z{z}/row{y}/{z}_{x}-{y}.jpg"],
-            maxzoom: 8,
-            attribution: "Colored relief © maps-for-free.com",
-        },
         satellite: {
             tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
             maxzoom: 19,

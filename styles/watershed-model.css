@@ -14,15 +14,36 @@ body {
     padding: 24px 20px 80px;
 }
 
+.page-head,
+.controls,
+.map-note {
+    text-align: left;
+}
+
+.eyebrow {
+    margin: 0 0 6px;
+    font-family: Montserrat, Helvetica, sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #C8102E;
+}
+
 .model-page h1 {
-    font-size: 40px;
-    margin: 0 0 8px;
+    font-family: Montserrat, Helvetica, sans-serif;
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin: 0 0 10px;
 }
 
 .lede {
     color: #424245;
-    max-width: 720px;
-    line-height: 1.5;
+    max-width: 68ch;
+    line-height: 1.55;
+    margin: 0;
 }
 
 .model-layout {
@@ -47,15 +68,31 @@ body {
 }
 
 .controls h2 {
-    font-size: 18px;
-    margin: 22px 0 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 28px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e6e6e8;
+    font-family: Montserrat, Helvetica, sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.controls h2 span {
+    color: #C8102E;
+    font-size: 12px;
+    letter-spacing: 0.04em;
 }
 
 .controls label {
     display: block;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    margin: 12px 0 4px;
+    letter-spacing: 0.01em;
+    margin: 14px 0 6px;
 }
 
 .controls input[type="text"],
@@ -167,11 +204,17 @@ body {
     padding-top: 6px;
 }
 
-.save-quote { margin-top: 12px; }
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.save-quote { margin-top: 0; }
 
 .order-btn {
-    margin-top: 12px;
-    margin-left: 8px;
+    margin: 0;
     border: 2px solid #c7c7cc;
     background: #e8e8ed;
     color: #8e8e93;
