@@ -1,4 +1,4 @@
-sha: e59321934358a2f412999ca4021522aa597ed0b7
+sha: 3787281eb0ed09de46a35b7897eef9f429fe992b
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-09-24

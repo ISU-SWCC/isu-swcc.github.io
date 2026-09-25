@@ -495,8 +495,62 @@ function paintRelief(grid, exaggeration) {
     };
 }
 
+function bootFolds() {
+    const folds = [...document.querySelectorAll(".fold")];
+    if (!folds.length) return;
+    const line = () => 112;
+    let ticking = false;
+    let locked = false;
+
+    function currentFold() {
+        let current = folds[0];
+        folds.forEach((fold) => {
+            if (fold.getBoundingClientRect().top <= line() + 8) current = fold;
+        });
+        return current;
+    }
+
+    function apply(current) {
+        const before = current.getBoundingClientRect().top;
+        folds.forEach((fold) => {
+            const open = fold === current;
+            fold.classList.toggle("is-open", open);
+            const button = fold.querySelector("h2 button");
+            if (button) button.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+        const shift = current.getBoundingClientRect().top - before;
+        if (Math.abs(shift) > 1) window.scrollBy(0, shift);
+    }
+
+    function update() {
+        ticking = false;
+        if (locked) return;
+        apply(currentFold());
+    }
+
+    window.addEventListener("scroll", () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(update);
+    }, { passive: true });
+
+    folds.forEach((fold) => {
+        fold.querySelector("h2 button").addEventListener("click", () => {
+            locked = true;
+            apply(fold);
+            const top = fold.getBoundingClientRect().top + window.scrollY - line();
+            window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+            window.setTimeout(() => { locked = false; }, 500);
+        });
+    });
+
+    apply(folds[0]);
+}
+
 if (typeof document !== "undefined" && document.getElementById("map")) {
     bootWatershedPage();
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bootFolds);
+    else bootFolds();
 }
 
 function bootWatershedPage() {

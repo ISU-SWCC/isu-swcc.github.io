@@ -19,76 +19,104 @@
             <p class="lede" id="intro"></p>
         </header>
         <div class="model-layout">
-            <div>
+            <div class="map-column">
                 <div id="map" role="application" aria-label="Watershed map"></div>
                 <p class="map-note" id="map-note"></p>
             </div>
             <form class="controls" id="model-form">
-                <h2><span>01</span> Watershed</h2>
-                <div class="choices" role="group" aria-label="How to choose a watershed">
-                    <button type="button" id="mode-catalog" aria-pressed="true">Boundary dataset</button>
-                    <button type="button" id="mode-point" aria-pressed="false">Pour point</button>
-                </div>
-                <div id="catalog-tools">
-                    <label for="basin-search">Search the club dataset</label>
-                    <input id="basin-search" type="text" autocomplete="off">
-                    <ul class="results" id="basin-results"></ul>
-                </div>
-                <p class="field-note" id="point-note" hidden></p>
+                <section class="fold is-open" id="fold-watershed">
+                    <h2><button type="button" aria-expanded="true"><span>01</span> Watershed</button></h2>
+                    <div class="fold-body">
+                        <div class="choices" role="group" aria-label="How to choose a watershed">
+                            <button type="button" id="mode-catalog" aria-pressed="true">Boundary dataset</button>
+                            <button type="button" id="mode-point" aria-pressed="false">Pour point</button>
+                        </div>
+                        <div id="catalog-tools">
+                            <label for="basin-search">Search the club dataset</label>
+                            <input id="basin-search" type="text" autocomplete="off">
+                            <ul class="results" id="basin-results"></ul>
+                        </div>
+                        <p class="field-note" id="point-note" hidden></p>
+                    </div>
+                </section>
 
-                <h2><span>02</span> Squares</h2>
-                <label for="square-count">Number of 24-inch squares</label>
-                <input id="square-count" type="number" min="1" max="100" step="1" value="4">
-                <div class="choices" role="group" aria-label="How the basin sits in the squares">
-                    <button type="button" id="align-north" aria-pressed="true">True north</button>
-                    <button type="button" id="align-max" aria-pressed="false">Largest fit</button>
-                </div>
-                <p class="size-readout" id="size-readout"></p>
-                <div class="painter" id="painter" aria-hidden="true"></div>
-                <p class="field-note">The basin is scaled to fit those squares. One square uses the full 24 by 24 inches. With more than one square, a 1/2 inch border is left around the outside so the squares can lock. True north keeps north at the top of the model. Largest fit turns the model so the basin prints as large as it can.</p>
+                <section class="fold" id="fold-squares">
+                    <h2><button type="button" aria-expanded="false"><span>02</span> Squares</button></h2>
+                    <div class="fold-body">
+                        <label for="square-count">Number of 24-inch squares</label>
+                        <input id="square-count" type="number" min="1" max="100" step="1" value="4">
+                        <div class="choices" role="group" aria-label="How the basin sits in the squares">
+                            <button type="button" id="align-north" aria-pressed="true">True north</button>
+                            <button type="button" id="align-max" aria-pressed="false">Largest fit</button>
+                        </div>
+                        <p class="size-readout" id="size-readout"></p>
+                        <div class="painter" id="painter" aria-hidden="true"></div>
+                        <p class="field-note">The basin is scaled to fit those squares. One square uses the full 24 by 24 inches. With more than one square, a 1/2 inch border is left around the outside so the squares can lock. True north keeps north at the top of the model. Largest fit turns the model so the basin prints as large as it can.</p>
+                    </div>
+                </section>
 
-                <h2><span>03</span> Surface</h2>
-                <div class="choices" id="color-choices" role="group" aria-label="Surface"></div>
-                <p class="field-note" id="color-note"></p>
+                <section class="fold" id="fold-surface">
+                    <h2><button type="button" aria-expanded="false"><span>03</span> Surface</button></h2>
+                    <div class="fold-body">
+                        <div class="choices" id="color-choices" role="group" aria-label="Surface"></div>
+                        <p class="field-note" id="color-note"></p>
+                    </div>
+                </section>
 
-                <h2><span>04</span> Vertical scale</h2>
-                <label for="exaggeration">Exaggeration</label>
-                <input id="exaggeration" type="number" min="0" max="100" step="0.1" value="1">
-                <p class="field-note">1 matches the horizontal scale. Less than 1 is flatter. More than 1 is steeper. Every point is at least 0.5 in thick. Nothing is taller than 18 in.</p>
-                <p class="size-readout" id="vert-readout"></p>
+                <section class="fold" id="fold-vertical">
+                    <h2><button type="button" aria-expanded="false"><span>04</span> Vertical scale</button></h2>
+                    <div class="fold-body">
+                        <label for="exaggeration">Exaggeration</label>
+                        <input id="exaggeration" type="number" min="0" max="100" step="0.1" value="1">
+                        <p class="field-note">1 matches the horizontal scale. Less than 1 is flatter. More than 1 is steeper. Every point is at least 0.5 in thick. Nothing is taller than 18 in.</p>
+                        <p class="size-readout" id="vert-readout"></p>
+                    </div>
+                </section>
 
-                <h2><span>05</span> Accessory kits</h2>
-                <label for="kits">Quantity</label>
-                <input id="kits" type="number" min="0" step="1" value="0">
-                <p class="field-note" id="kit-note"></p>
+                <section class="fold" id="fold-kits">
+                    <h2><button type="button" aria-expanded="false"><span>05</span> Accessory kits</button></h2>
+                    <div class="fold-body">
+                        <label for="kits">Quantity</label>
+                        <input id="kits" type="number" min="0" step="1" value="0">
+                        <p class="field-note" id="kit-note"></p>
+                    </div>
+                </section>
 
-                <h2><span>06</span> Delivery</h2>
-                <label for="country">Country</label>
-                <input id="country" type="text" value="US" autocomplete="country">
-                <label for="region">State or region</label>
-                <input id="region" type="text" autocomplete="address-level1">
-                <label for="postal">Postal code</label>
-                <input id="postal" type="text" autocomplete="postal-code">
-                <label for="city">City</label>
-                <input id="city" type="text" autocomplete="address-level2">
-                <label for="street">Street</label>
-                <input id="street" type="text" autocomplete="street-address">
-                <label for="recipient">Name</label>
-                <input id="recipient" type="text" autocomplete="name">
+                <section class="fold" id="fold-delivery">
+                    <h2><button type="button" aria-expanded="false"><span>06</span> Delivery</button></h2>
+                    <div class="fold-body">
+                        <label for="country">Country</label>
+                        <input id="country" type="text" value="US" autocomplete="country">
+                        <label for="region">State or region</label>
+                        <input id="region" type="text" autocomplete="address-level1">
+                        <label for="postal">Postal code</label>
+                        <input id="postal" type="text" autocomplete="postal-code">
+                        <label for="city">City</label>
+                        <input id="city" type="text" autocomplete="address-level2">
+                        <label for="street">Street</label>
+                        <input id="street" type="text" autocomplete="street-address">
+                        <label for="recipient">Name</label>
+                        <input id="recipient" type="text" autocomplete="name">
+                    </div>
+                </section>
 
-                <h2><span>07</span> Quote</h2>
-                <div class="quote" id="quote"></div>
-                <p class="field-note" id="eta"></p>
-                <div class="actions">
-                    <button type="button" class="save-quote" id="save-quote">Save quote file</button>
-                    <button type="button" class="order-btn" id="order-btn" disabled>Order</button>
-                </div>
+                <section class="fold" id="fold-quote">
+                    <h2><button type="button" aria-expanded="false"><span>07</span> Quote</button></h2>
+                    <div class="fold-body">
+                        <div class="quote" id="quote"></div>
+                        <p class="field-note" id="eta"></p>
+                        <div class="actions">
+                            <button type="button" class="save-quote" id="save-quote">Save quote file</button>
+                            <button type="button" class="order-btn" id="order-btn" disabled>Order</button>
+                        </div>
+                    </div>
+                </section>
             </form>
         </div>
     </main>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20260925a"></script>
+    <script src="../assets/js/watershed-model.js?v=20260925b"></script>
 </body>
 
 </html>

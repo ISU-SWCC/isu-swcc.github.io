@@ -51,6 +51,12 @@ body {
     grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
     gap: 28px;
     margin-top: 24px;
+    align-items: start;
+}
+
+.map-column {
+    position: sticky;
+    top: 88px;
 }
 
 #map {
@@ -67,24 +73,54 @@ body {
     line-height: 1.45;
 }
 
-.controls h2 {
+.controls {
+    padding-bottom: 62vh;
+}
+
+.fold {
+    border-bottom: 1px solid #e6e6e8;
+}
+
+.fold h2 {
+    margin: 0;
+}
+
+.fold h2 button {
     display: flex;
     align-items: baseline;
     gap: 10px;
-    margin: 28px 0 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #e6e6e8;
+    width: 100%;
+    margin: 0;
+    padding: 16px 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
     font-family: Montserrat, Helvetica, sans-serif;
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+    color: #6e6e73;
 }
 
-.controls h2 span {
+.fold.is-open h2 button {
+    color: #1d1d1f;
+}
+
+.fold h2 button span {
     color: #C8102E;
     font-size: 12px;
     letter-spacing: 0.04em;
+}
+
+.fold-body {
+    display: none;
+    padding-bottom: 12px;
+}
+
+.fold.is-open .fold-body {
+    display: block;
 }
 
 .controls label {
@@ -227,5 +263,6 @@ body {
 @media (max-width: 800px) {
     .model-page h1 { font-size: 32px; }
     .model-layout { grid-template-columns: 1fr; }
+    .map-column { position: static; }
     #map { height: 52vh; min-height: 260px; }
 }
