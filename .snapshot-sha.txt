@@ -1,5 +1,5 @@
-sha: 3b5b785bb01e410c12222174c985cb4c375284a2
+sha: d82104a57a11683706eaec7cdf4ac499188dea8f
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-08
-note: This commit prices watershed prints from filament, machine time, and accessory kits. The vault folder is the working copy. Publish again the same way when the live site should change.
+note: This commit adds shipping, packaging, and bulk or enterprise filament to the watershed quote. The vault folder is the working copy. Publish again the same way when the live site should change.
