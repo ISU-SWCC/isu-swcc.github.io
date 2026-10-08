@@ -1,6 +1,5 @@
-sha: 3787281eb0ed09de46a35b7897eef9f429fe992b
+sha: 749dbafba6a281f40b49107801d1f317c8e82ee2
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
-published: 2026-09-24
-note: This commit is the copy pushed to GitHub Pages. The vault folder is the working copy. Publish again the same way when the live site should change.
-
+published: 2026-10-08
+note: This commit is the watershed elevation and projection update pushed to GitHub Pages. The vault folder is the working copy. Publish again the same way when the live site should change.
