@@ -32,9 +32,10 @@
                             <button type="button" id="mode-point" aria-pressed="false">Pour Point</button>
                         </div>
                         <div id="catalog-tools">
-                            <label for="basin-search">Search the Club Dataset</label>
-                            <input id="basin-search" type="text" autocomplete="off">
+                            <label for="basin-search">Search by Name or HUC</label>
+                            <input id="basin-search" type="text" autocomplete="off" placeholder="South Skunk or 07080105">
                             <ul class="results" id="basin-results"></ul>
+                            <p class="field-note" id="catalog-note"></p>
                         </div>
                         <p class="field-note" id="point-note" hidden></p>
                     </div>
@@ -147,7 +148,7 @@
     </main>
     <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20261008h"></script>
+    <script src="../assets/js/watershed-model.js?v=20261008i"></script>
 </body>
 
 </html>

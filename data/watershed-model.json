@@ -1,8 +1,9 @@
 {
   "title": "Watershed Flow Model",
-  "intro": "A physical watershed model made of 24-inch squares. The map starts on an example basin. Replace the boundary file when the club dataset is ready.",
+  "intro": "A physical watershed model made of 24-inch squares. Search USGS watersheds by name or HUC code. The map opens on an example basin near Ames.",
   "square_inches": 24,
   "max_squares": 100,
+  "boundaries_catalog": "data/boundaries/index.json",
   "delineate_url": null,
   "printers": null,
   "assembly_days": null,

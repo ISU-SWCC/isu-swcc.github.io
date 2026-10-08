@@ -20,9 +20,42 @@ function product(values) {
     return total;
 }
 
+const HUC_LABEL = {
+    2: "HUC2", 4: "HUC4", 6: "HUC6", 8: "HUC8",
+    10: "HUC10", 12: "HUC12", 14: "HUC14", 16: "HUC16",
+};
+
 function featureName(feature, index) {
     const props = feature.properties || {};
     return String(props.name || props.Name || props.id || `Basin ${index + 1}`);
+}
+
+function catalogMatches(rows, query) {
+    const text = String(query || "").trim().toLowerCase();
+    if (text.length < 2 || !rows) return [];
+    const digits = /^\d+$/.test(text);
+    const hits = [];
+    for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index];
+        const code = String(row[1]);
+        const name = String(row[2] || "");
+        const lower = name.toLowerCase();
+        let rank = 9;
+        if (digits) {
+            if (code === text) rank = 0;
+            else if (code.startsWith(text)) rank = 1;
+            else continue;
+        } else if (lower === text) rank = 0;
+        else if (lower.startsWith(text)) rank = 1;
+        else if (lower.includes(text)) rank = 2;
+        else continue;
+        hits.push({ rank, row });
+    }
+    hits.sort((left, right) => left.rank - right.rank
+        || left.row[0] - right.row[0]
+        || String(left.row[1]).length - String(right.row[1]).length
+        || String(left.row[2]).localeCompare(String(right.row[2])));
+    return hits.slice(0, 20).map((hit) => hit.row);
 }
 
 function featureBbox(feature) {
@@ -1126,6 +1159,9 @@ function bootWatershedPage() {
     const state = {
         rates: null,
         boundaries: [],
+        catalog: null,
+        geomCache: new Map(),
+        chooseToken: 0,
         feature: null,
         method: "catalog",
         pourPoint: null,
@@ -1144,6 +1180,7 @@ function bootWatershedPage() {
         elevGrid: null,
         reliefImage: null,
         elevLoading: null,
+        elevMiss: null,
         elevAbort: null,
         material: "pla-bulk",
         grade: "standard",
@@ -1185,9 +1222,13 @@ function bootWatershedPage() {
         loadJSON("../data/watershed-model.json"),
         loadJSON(assetPath("data/ramps.json")),
         loadJSON(assetPath("data/zip-centroids.json")).catch(() => null),
-    ]).then(async ([rates, rampBook, zips]) => {
+        loadJSON(assetPath("data/boundaries/index.json")).catch(() => null),
+    ]).then(async ([rates, rampBook, zips, catalog]) => {
         state.rates = rates;
         state.zips = zips;
+        state.catalog = catalog && catalog.rows ? catalog : null;
+        const catalogNote = document.getElementById("catalog-note");
+        if (catalogNote) catalogNote.textContent = (catalog && catalog.about) || "";
         state.rampBook = rampBook;
         state.ramp = rampBook.default || "cd-a";
         document.getElementById("intro").textContent = rates.intro;
@@ -1372,16 +1413,80 @@ function bootWatershedPage() {
         render();
     }
 
-    function renderResults(query) {
+    function geomUrl(row) {
+        const spec = state.catalog && state.catalog.geom && state.catalog.geom[String(row[0])];
+        if (!spec) return "";
+        if (spec.endsWith("/")) return `data/boundaries/${spec}${String(row[1]).slice(0, 2)}.json`;
+        return `data/boundaries/${spec}`;
+    }
+
+    function geometryFor(row) {
+        const url = geomUrl(row);
+        if (!url) return Promise.reject(new Error("no geometry file"));
+        let pending = state.geomCache.get(url);
+        if (!pending) {
+            pending = loadJSON(assetPath(url)).then((collection) => {
+                const found = new Map();
+                (collection.features || []).forEach((feature) => {
+                    const code = feature.properties && feature.properties.code;
+                    if (code && feature.geometry) found.set(String(code), feature.geometry);
+                });
+                return found;
+            }).catch((error) => {
+                state.geomCache.delete(url);
+                throw error;
+            });
+            state.geomCache.set(url, pending);
+        }
+        return pending.then((found) => {
+            const geometry = found.get(String(row[1]));
+            if (!geometry) throw new Error("missing geometry");
+            return geometry;
+        });
+    }
+
+    function featureFromRow(row, geometry) {
+        return {
+            type: "Feature",
+            properties: {
+                id: String(row[1]),
+                name: row[2],
+                level: HUC_LABEL[row[0]] || String(row[0]),
+                code: String(row[1]),
+                states: row[3] || "",
+                area_km2: row[4],
+                dataset: "us-wbd",
+            },
+            geometry,
+        };
+    }
+
+    function chooseCatalog(row) {
+        const token = state.chooseToken + 1;
+        state.chooseToken = token;
+        const note = document.getElementById("catalog-note");
+        if (note) note.textContent = `Loading ${row[2]}…`;
+        geometryFor(row).then((geometry) => {
+            if (state.chooseToken !== token) return;
+            state.method = "catalog";
+            adoptFeature(featureFromRow(row, geometry));
+            if (note) note.textContent = (state.catalog && state.catalog.about) || "";
+        }).catch(() => {
+            if (state.chooseToken !== token) return;
+            if (note) note.textContent = "That watershed outline did not load.";
+        });
+    }
+
+    function renderExampleResults(query) {
         const list = document.getElementById("basin-results");
         const text = query.trim().toLowerCase();
         const matches = state.boundaries.filter((feature, index) => featureName(feature, index).toLowerCase().includes(text)).slice(0, 20);
         if (!state.boundaries.length) {
-            list.innerHTML = "<li class='field-note'>The boundary dataset is empty. Add basins to the club GeoJSON file.</li>";
+            list.innerHTML = "<li class='field-note'>The boundary dataset is empty.</li>";
             return;
         }
-        list.innerHTML = matches.map((feature, index) => {
-            const name = featureName(feature, index);
+        list.innerHTML = matches.map((feature) => {
+            const name = featureName(feature, state.boundaries.indexOf(feature));
             return `<li><button type="button" data-index="${state.boundaries.indexOf(feature)}">${escapeHtml(name)}</button></li>`;
         }).join("") || "<li class='field-note'>No basin matches that name.</li>";
         list.querySelectorAll("button").forEach((button) => {
@@ -1389,6 +1494,34 @@ function bootWatershedPage() {
                 state.method = "catalog";
                 adoptFeature(state.boundaries[Number(button.dataset.index)]);
             });
+        });
+    }
+
+    function renderResults(query) {
+        const list = document.getElementById("basin-results");
+        if (!state.catalog) {
+            renderExampleResults(query);
+            return;
+        }
+        const text = query.trim();
+        if (text.length < 2) {
+            list.innerHTML = "<li class='field-note'>Type a watershed name or a HUC code.</li>";
+            return;
+        }
+        const matches = catalogMatches(state.catalog.rows, text);
+        if (!matches.length) {
+            list.innerHTML = "<li class='field-note'>No watershed matches that name or code.</li>";
+            return;
+        }
+        list.innerHTML = matches.map((row, index) => {
+            const level = HUC_LABEL[row[0]] || row[0];
+            const where = row[3] ? ` · ${row[3]}` : "";
+            const area = Number.isFinite(row[4]) ? ` · ${Number(row[4]).toLocaleString("en-US")} km²` : "";
+            const label = `${row[2]} · ${level} ${row[1]}${where}${area}`;
+            return `<li><button type="button" data-index="${index}">${escapeHtml(label)}</button></li>`;
+        }).join("");
+        list.querySelectorAll("button").forEach((button) => {
+            button.addEventListener("click", () => chooseCatalog(matches[Number(button.dataset.index)]));
         });
     }
 
@@ -1569,7 +1702,12 @@ function bootWatershedPage() {
         const grid = state.elevGrid;
         if (!fit || !grid) {
             state.vertical = null;
-            note.textContent = grid ? "Choose a basin to scale the height." : "Elevation for this basin is loading.";
+            const basinId = state.feature && state.feature.properties && state.feature.properties.id;
+            if (state.feature && state.elevMiss === basinId) {
+                note.textContent = "The 30 m print grid for this basin is not on the site yet. The map still shows the 5 km DEM overview.";
+            } else {
+                note.textContent = grid ? "Choose a basin to scale the height." : "Elevation for this basin is loading.";
+            }
             return;
         }
         const reliefM = Math.max(0, grid.max - grid.min);
@@ -1601,7 +1739,7 @@ function bootWatershedPage() {
         if (!id) {
             state.elevGrid = null;
             state.reliefImage = null;
-            if (note) note.textContent = "Elevation for this basin has not been baked.";
+            if (note) note.textContent = "The 30 m print grid for this basin is not on the site yet. The map still shows the 5 km DEM overview.";
             return;
         }
         const ramp = activeRamp();
@@ -1620,11 +1758,13 @@ function bootWatershedPage() {
         const controller = new AbortController();
         state.elevAbort = controller;
         state.elevLoading = id;
+        state.elevMiss = null;
         sampleElevations(state.feature, controller.signal).then((grid) => {
             if (controller.signal.aborted) return;
             if (!state.feature || !(state.feature.properties && state.feature.properties.id === id)) return;
             state.elevGrid = grid;
             state.elevLoading = null;
+            state.elevMiss = null;
             state.reliefImage = null;
             render();
         }).catch((error) => {
@@ -1633,7 +1773,8 @@ function bootWatershedPage() {
             state.elevLoading = null;
             state.elevGrid = null;
             state.reliefImage = null;
-            if (note) note.textContent = "Elevation for this basin has not been baked.";
+            state.elevMiss = id;
+            if (note) note.textContent = "The 30 m print grid for this basin is not on the site yet. The map still shows the 5 km DEM overview.";
         });
     }
 
@@ -1671,9 +1812,16 @@ function bootWatershedPage() {
 
     function mapCaption() {
         if (!state.feature) return "Choose a basin, or save a pour point.";
-        const exampleOnly = state.boundaries.length === 1 && state.boundaries[0].properties && state.boundaries[0].properties.example;
+        const props = state.feature.properties || {};
         const name = featureName(state.feature, 0);
-        let text = `${name}${exampleOnly ? " is an example, standing in until the club boundary dataset is loaded" : ""}. The red line is the basin. The black squares are the model. The surface inside them is a preview, not the print file.`;
+        let text;
+        if (props.dataset === "us-wbd") {
+            const where = props.states ? ` ${props.states}.` : "";
+            text = `${name}, ${props.level} ${props.code}.${where} USGS Watershed Boundary Dataset. The red line is the basin. The black squares are the model. The outline is simplified to about 1 km. The surface inside the squares is a preview, not the print file.`;
+        } else {
+            const exampleOnly = props.example || (state.boundaries.length === 1 && state.boundaries[0].properties && state.boundaries[0].properties.example);
+            text = `${name}${exampleOnly ? " is an example near Ames. Search by name or HUC code for a USGS watershed" : ""}. The red line is the basin. The black squares are the model. The surface inside them is a preview, not the print file.`;
+        }
         const id = state.feature.properties && state.feature.properties.id;
         const grid = state.elevGrid;
         if (grid && grid.key === id) {
