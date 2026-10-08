@@ -21,23 +21,39 @@
     "failure_rate": 0.1,
     "energy_per_kwh": 0.12,
     "power_w": 500,
+    "packaging_cost": 0.1,
     "safety_factor": 0.1,
     "profit": 0.5,
-    "basis": "PLA is $20.74/kg (8,176 listings), PET is $18.69/kg from the PETG average (3,077 listings), and ASA is $21.86/kg (334 listings), all on 8 October 2026. Printable PET is sold as PETG. Draft, standard, and fine use 15, 10, and 6 mm³/s. Infill stays 15%. The printer is $6,000 over 10,000 hours, on 180 print days a year. Failed prints are 10%. Power is 500 W at 12 cents per kWh. Labor is $16 an hour, one hour for each 24 in square. A 10% safety factor is added, then 50% profit.",
+    "basis": "PLA Bulk is $12/kg and PLA Enterprise is $32/kg. PET Bulk is $12/kg and PET Enterprise is $30/kg. ASA Bulk is $17/kg and ASA Enterprise is $40/kg. Printable PET is sold as PETG. Bulk is the multi-kilogram shop price. Enterprise is the premium single-spool price. Draft, Standard, and Fine use 15, 10, and 6 mm³/s. Infill stays 15%. The printer is $6,000 over 10,000 hours. Failed prints are 10%. Power is 500 W at 12 cents per kWh. Labor is $16 an hour, one hour for each 24 in square. Packaging is 10% of the model and kits after the reprint allowance, and packaging adds 30% to the tile weight. A 10% safety factor follows, then 50% profit. Shipping is added after profit.",
     "materials": {
-      "pla": {
-        "label": "PLA",
-        "usd_per_kg": 20.74,
+      "pla-bulk": {
+        "label": "PLA Bulk",
+        "usd_per_kg": 12,
         "density_g_cm3": 1.24
       },
-      "pet": {
-        "label": "PET",
-        "usd_per_kg": 18.69,
+      "pla-enterprise": {
+        "label": "PLA Enterprise",
+        "usd_per_kg": 32,
+        "density_g_cm3": 1.24
+      },
+      "pet-bulk": {
+        "label": "PET Bulk",
+        "usd_per_kg": 12,
         "density_g_cm3": 1.27
       },
-      "asa": {
-        "label": "ASA",
-        "usd_per_kg": 21.86,
+      "pet-enterprise": {
+        "label": "PET Enterprise",
+        "usd_per_kg": 30,
+        "density_g_cm3": 1.27
+      },
+      "asa-bulk": {
+        "label": "ASA Bulk",
+        "usd_per_kg": 17,
+        "density_g_cm3": 1.07
+      },
+      "asa-enterprise": {
+        "label": "ASA Enterprise",
+        "usd_per_kg": 40,
         "density_g_cm3": 1.07
       }
     },
@@ -59,11 +75,135 @@
       }
     }
   },
+  "ship": {
+    "origin_zip": "50011",
+    "origin_lat": 42.026,
+    "origin_lon": -93.646,
+    "origin_name": "Ames, Iowa",
+    "packaging_weight": 0.3,
+    "dim_divisor": 139,
+    "box_in": 24,
+    "max_lb": 150,
+    "max_length_girth_in": 165,
+    "zone_miles": [
+      150,
+      300,
+      600,
+      1000,
+      1400,
+      1800
+    ],
+    "weights_lb": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      10,
+      15,
+      20,
+      30,
+      50
+    ],
+    "rates": [
+      [
+        11.99,
+        12.38,
+        13.51,
+        14.1,
+        14.6,
+        14.83,
+        15.03
+      ],
+      [
+        12.85,
+        14.15,
+        15.46,
+        15.79,
+        16.49,
+        17.18,
+        17.4
+      ],
+      [
+        13.38,
+        14.91,
+        16.08,
+        16.93,
+        17.65,
+        18.28,
+        19.14
+      ],
+      [
+        13.76,
+        15.0,
+        16.8,
+        17.89,
+        18.39,
+        19.63,
+        20.51
+      ],
+      [
+        14.19,
+        15.71,
+        17.15,
+        18.65,
+        19.45,
+        20.54,
+        21.72
+      ],
+      [
+        15.91,
+        16.98,
+        18.75,
+        20.46,
+        21.19,
+        23.83,
+        26.29
+      ],
+      [
+        17.96,
+        19.11,
+        20.07,
+        22.68,
+        26.2,
+        31.6,
+        35.25
+      ],
+      [
+        19.2,
+        21.47,
+        21.88,
+        26.97,
+        31.47,
+        38.35,
+        43.33
+      ],
+      [
+        23.2,
+        27.34,
+        29.94,
+        35.95,
+        44.95,
+        52.32,
+        62.08
+      ],
+      [
+        29.53,
+        36.6,
+        43.61,
+        53.02,
+        66.73,
+        80.62,
+        90.26
+      ]
+    ],
+    "basis": "UPS Ground published daily rates, effective 22 December 2025. Zones are straight-line miles from Ames: 150, 300, 600, 1000, 1400, and 1800. The billable weight is the greater of scale weight and length times width times height divided by 139, rounded up. Weights between published breaks are interpolated. Above 50 lb the 30-to-50 lb slope is extended. Residential and oversize surcharges are not included."
+  },
   "kits_intro": "Add any number of each kit. The kit price is the sum of its materials.",
   "kits": [
     {
       "id": "practice",
-      "label": "Practice kit",
+      "label": "Practice Kit",
       "materials": [
         {
           "name": "Clay putty, 1 lb, for dams",
@@ -76,12 +216,16 @@
         {
           "name": "Rough sprinkle, 1 lb, for surface roughness",
           "price": 3
+        },
+        {
+          "name": "Label flags, pack of 20",
+          "price": 5
         }
       ]
     },
     {
       "id": "contaminant",
-      "label": "Contaminant kit",
+      "label": "Contaminant Kit",
       "materials": [
         {
           "name": "Spray bottles, pack of 2",
@@ -94,27 +238,17 @@
         {
           "name": "Particulate simulant, 4 oz",
           "price": 4
-        }
-      ]
-    },
-    {
-      "id": "display",
-      "label": "Display kit",
-      "materials": [
+        },
         {
           "name": "Markers, set of 8",
           "price": 7
-        },
-        {
-          "name": "Label flags, pack of 20",
-          "price": 5
         }
       ]
     }
   ],
   "colors": {
     "white": {
-      "label": "Solid white",
+      "label": "Solid White",
       "material_rate": null,
       "hours_per_square": null,
       "labor_hours_per_square": null,
@@ -138,7 +272,7 @@
       "days_per_square": null
     },
     "topo": {
-      "label": "USGS topo",
+      "label": "USGS Topo",
       "material_rate": null,
       "hours_per_square": null,
       "labor_hours_per_square": null,

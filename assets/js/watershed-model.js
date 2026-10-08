@@ -542,6 +542,199 @@ function basinCoverage(feature, keys, scale) {
 }
 
 const CUBIC_INCH_CM3 = 16.387064;
+const LB_PER_KG = 2.2046226218;
+const ZONE_DAYS = { 2: "1–2", 3: "2", 4: "2–3", 5: "3", 6: "3–4", 7: "4", 8: "4–5" };
+
+function padZip(value) {
+    const digits = String(value || "").replace(/\D/g, "");
+    if (digits.length < 5) return "";
+    return digits.slice(0, 5);
+}
+
+function isUnitedStates(country) {
+    const text = String(country || "").trim().toLowerCase();
+    return text === "us" || text === "usa" || text === "united states";
+}
+
+function nearestZip(rows, lon, lat) {
+    if (!rows || !rows.length) return "";
+    let best = null;
+    let bestDistance = Infinity;
+    const scale = Math.cos((lat * Math.PI) / 180);
+    for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index];
+        const dLat = row[1] / 1000 - lat;
+        const dLon = (row[2] / 1000 - lon) * scale;
+        const distance = dLat * dLat + dLon * dLon;
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = row[0];
+        }
+    }
+    return best == null ? "" : String(best).padStart(5, "0");
+}
+
+function zipRecord(rows, zip) {
+    const wanted = padZip(zip);
+    if (!wanted || !rows) return null;
+    for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index];
+        if (String(row[0]).padStart(5, "0") === wanted) return row;
+    }
+    return null;
+}
+
+function haversineMiles(lon1, lat1, lon2, lat2) {
+    const radius = 3958.7613;
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const dPhi = (lat2 - lat1) * Math.PI / 180;
+    const dLam = (lon2 - lon1) * Math.PI / 180;
+    const chord = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLam / 2) ** 2;
+    return 2 * radius * Math.asin(Math.min(1, Math.sqrt(chord)));
+}
+
+function zoneFromMiles(miles, cuts) {
+    for (let index = 0; index < cuts.length; index += 1) {
+        if (miles <= cuts[index]) return index + 2;
+    }
+    return cuts.length + 2;
+}
+
+function groundRate(ship, pounds, zone) {
+    const weights = ship.weights_lb || [];
+    const table = ship.rates || [];
+    const column = zone - 2;
+    if (!weights.length || !table.length || column < 0 || column >= table[0].length) return null;
+    const prices = table.map((row) => row[column]);
+    if (prices.some((price) => finite(price) == null)) return null;
+    if (pounds <= weights[0]) return prices[0];
+    const last = weights.length - 1;
+    if (pounds >= weights[last]) {
+        const span = weights[last] - weights[last - 1];
+        const slope = span > 0 ? (prices[last] - prices[last - 1]) / span : 0;
+        return prices[last] + slope * (pounds - weights[last]);
+    }
+    for (let index = 1; index < weights.length; index += 1) {
+        if (pounds <= weights[index]) {
+            const span = weights[index] - weights[index - 1];
+            const share = span > 0 ? (pounds - weights[index - 1]) / span : 0;
+            return prices[index - 1] + share * (prices[index] - prices[index - 1]);
+        }
+    }
+    return null;
+}
+
+function modelInchesFromLngLat(lng, lat, fit) {
+    let east;
+    let north;
+    if (fit.crs && fit.origin) {
+        const projected = projectPoint(lng, lat, fit.crs);
+        east = projected[0] - fit.origin[0];
+        north = projected[1] - fit.origin[1];
+    } else {
+        const local = localMeters(lng, lat, fit.lng0, fit.lat0);
+        east = local[0];
+        north = local[1];
+    }
+    const angle = (fit.rotationDeg * Math.PI) / 180;
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    const rotatedX = east * cosine - north * sine;
+    const rotatedY = east * sine + north * cosine;
+    return [(rotatedX - fit.cx) * fit.inchesPerMeter, (rotatedY - fit.cy) * fit.inchesPerMeter];
+}
+
+function squarePeaks(grid, fit) {
+    const cols = grid.cols;
+    const rows = grid.rows || grid.n;
+    const signature = [
+        grid.key,
+        fit.cols,
+        fit.rows,
+        fit.rotationDeg,
+        fit.metersPerInch,
+        fit.cx,
+        fit.cy,
+        fit.crs ? fit.crs.label : "",
+    ].join("|");
+    if (grid._peaks && grid._peaks.signature === signature) return grid._peaks.peaks;
+    const peaks = new Map();
+    fit.squares.forEach((key) => peaks.set(key, null));
+    const [west, south, east, north] = grid.box;
+    for (let row = 0; row < rows; row += 1) {
+        const lat = south + (row + 0.5) / rows * (north - south);
+        for (let col = 0; col < cols; col += 1) {
+            const elev = grid.values[row * cols + col];
+            if (elev == null) continue;
+            const lng = west + (col + 0.5) / cols * (east - west);
+            const [mx, my] = modelInchesFromLngLat(lng, lat, fit);
+            const squareCol = Math.floor((mx + fit.outerWidthIn / 2) / 24);
+            const squareRow = Math.floor((my + fit.outerHeightIn / 2) / 24);
+            if (squareCol < 0 || squareRow < 0 || squareCol >= fit.cols || squareRow >= fit.rows) continue;
+            const key = squareKey(squareCol, squareRow);
+            if (!peaks.has(key)) continue;
+            const prior = peaks.get(key);
+            if (prior == null || elev > prior) peaks.set(key, elev);
+        }
+    }
+    grid._peaks = { signature, peaks };
+    return peaks;
+}
+
+function stackInches(grid, fit, exaggeration) {
+    if (!grid || !fit || !fit.squares || !fit.squares.size || !(fit.metersPerInch > 0)) return null;
+    const peaks = squarePeaks(grid, fit);
+    let total = 0;
+    peaks.forEach((elev) => {
+        const rise = elev == null ? 0 : Math.max(0, elev - grid.min) / fit.metersPerInch * (Number(exaggeration) || 0);
+        total += 0.5 + rise;
+    });
+    return total;
+}
+
+function shippingEstimate(state, kg, heightIn) {
+    const ship = state.rates && state.rates.ship;
+    const rows = state.zips && state.zips.rows;
+    if (!ship || !rows || !(kg > 0) || !(heightIn > 0)) return { amount: null };
+    if (!isUnitedStates(state.country)) return { amount: null, reason: "country" };
+    const zip = padZip(state.postal);
+    const destination = zipRecord(rows, zip);
+    if (!destination) return { amount: null, reason: "zip" };
+    const originLat = finite(ship.origin_lat);
+    const originLon = finite(ship.origin_lon);
+    const weightFactor = finite(ship.packaging_weight);
+    const divisor = finite(ship.dim_divisor);
+    const box = finite(ship.box_in);
+    if ([originLat, originLon, weightFactor, divisor, box].some((value) => value == null) || divisor <= 0) return { amount: null };
+    const miles = haversineMiles(originLon, originLat, destination[2] / 1000, destination[1] / 1000);
+    const zone = zoneFromMiles(miles, ship.zone_miles || []);
+    const scaleLb = kg * (1 + weightFactor) * LB_PER_KG;
+    const dimLb = (box * box * heightIn) / divisor;
+    const billableLb = Math.max(1, Math.ceil(Math.max(scaleLb, dimLb) - 1e-9));
+    const longest = Math.max(box, heightIn);
+    const sides = [box, box, heightIn].sort((left, right) => right - left);
+    const lengthGirth = sides[0] + 2 * (sides[1] + sides[2]);
+    const limited = billableLb > (finite(ship.max_lb) || 150) || lengthGirth > (finite(ship.max_length_girth_in) || 165);
+    const amount = groundRate(ship, billableLb, zone);
+    if (amount == null) return { amount: null };
+    return {
+        amount,
+        zip,
+        originZip: ship.origin_zip || "",
+        miles,
+        zone,
+        days: ZONE_DAYS[zone] || "1–5",
+        scaleLb,
+        dimLb,
+        billableLb,
+        heightIn,
+        lengthGirth,
+        longest,
+        limited,
+        extended: billableLb > 50 || limited,
+    };
+}
 
 function kitUnitPrice(kit) {
     return (kit.materials || []).reduce((sum, item) => sum + (finite(item.price) || 0), 0);
@@ -584,9 +777,10 @@ function printEstimate(state) {
     const wage = finite(spec.wage_per_hour);
     const laborEach = finite(spec.labor_hours_per_tile);
     const failure = finite(spec.failure_rate);
+    const packagingRate = finite(spec.packaging_cost);
     const safety = finite(spec.safety_factor);
     const profit = finite(spec.profit);
-    const numbers = [infill, density, price, flow, square, life, printer, power, energy, wage, laborEach, failure, safety, profit];
+    const numbers = [infill, density, price, flow, square, life, printer, power, energy, wage, laborEach, failure, packagingRate, safety, profit];
     if (numbers.some((value) => value == null) || failure >= 1 || life <= 0 || flow <= 0) return { ready: false };
     const plasticCm3 = square * square * height * CUBIC_INCH_CM3 * infill;
     const kg = (plasticCm3 * density / 1000) * squares;
@@ -606,15 +800,22 @@ function printEstimate(state) {
         kitTotal += amount;
         return { id: kit.id, label: kit.label, qty, amount };
     });
-    const before = withFailure + kitTotal;
+    const applied = state.vertical ? state.vertical.applied : state.exaggeration;
+    const boxHeight = stackInches(state.elevGrid, state.fit, applied) || height * squares;
+    const goods = withFailure + kitTotal;
+    const packagingAmount = goods * packagingRate;
+    const before = goods + packagingAmount;
     const safetyAmount = before * safety;
     const profitAmount = (before + safetyAmount) * profit;
+    const ship = shippingEstimate(state, kg, boxHeight);
+    const markedUp = before + safetyAmount + profitAmount;
     return {
         ready: true,
         material,
         grade,
         squares,
         heightIn: height,
+        boxHeightIn: boxHeight,
         kg,
         hours,
         laborHours,
@@ -624,9 +825,11 @@ function printEstimate(state) {
         laborCost,
         reprint: withFailure - production,
         kitLines,
+        packagingAmount,
         safetyAmount,
         profitAmount,
-        total: before + safetyAmount + profitAmount,
+        ship,
+        total: ship && ship.amount != null ? markedUp + ship.amount : null,
         activeDays: finite(spec.active_print_days),
     };
 }
@@ -635,8 +838,9 @@ function quoteLines(state) {
     const estimate = printEstimate(state);
     if (!estimate.ready) {
         return [
-            { label: "Print estimate", amount: null },
-            { label: "Accessory kits", amount: 0 },
+            { label: "Print Estimate", amount: null },
+            { label: "Accessory Kits", amount: 0 },
+            { label: "Shipping", amount: null },
         ];
     }
     const lines = [
@@ -644,13 +848,23 @@ function quoteLines(state) {
         { label: `Printer, ${estimate.squares} ${estimate.squares === 1 ? "square" : "squares"}, ${estimate.hours.toFixed(1)} h`, amount: estimate.machineCost },
         { label: "Energy", amount: estimate.energyCost },
         { label: `Labor, ${estimate.laborHours.toFixed(1)} h`, amount: estimate.laborCost },
-        { label: "Reprint allowance, 10%", amount: estimate.reprint },
+        { label: "Reprint Allowance, 10%", amount: estimate.reprint },
     ];
     estimate.kitLines.forEach((kit) => {
         lines.push({ label: `${kit.label} × ${kit.qty}`, amount: kit.amount });
     });
-    lines.push({ label: "Safety factor, 10%", amount: estimate.safetyAmount });
+    lines.push({ label: "Packaging, 10%", amount: estimate.packagingAmount });
+    lines.push({ label: "Safety Factor, 10%", amount: estimate.safetyAmount });
     lines.push({ label: "Profit, 50%", amount: estimate.profitAmount });
+    const ship = estimate.ship;
+    if (!ship || ship.amount == null) lines.push({ label: "Shipping", amount: null });
+    else {
+        const extra = ship.extended ? ", extended" : "";
+        lines.push({
+            label: `Shipping, ${ship.zip}, Zone ${ship.zone}, ${ship.billableLb} lb${extra}`,
+            amount: ship.amount,
+        });
+    }
     return lines;
 }
 
@@ -931,9 +1145,10 @@ function bootWatershedPage() {
         reliefImage: null,
         elevLoading: null,
         elevAbort: null,
-        material: "pla",
+        material: "pla-bulk",
         grade: "standard",
         kitQty: {},
+        zips: null,
         country: "US",
         region: "",
         postal: "",
@@ -969,8 +1184,10 @@ function bootWatershedPage() {
     Promise.all([
         loadJSON("../data/watershed-model.json"),
         loadJSON(assetPath("data/ramps.json")),
-    ]).then(async ([rates, rampBook]) => {
+        loadJSON(assetPath("data/zip-centroids.json")).catch(() => null),
+    ]).then(async ([rates, rampBook, zips]) => {
         state.rates = rates;
+        state.zips = zips;
         state.rampBook = rampBook;
         state.ramp = rampBook.default || "cd-a";
         document.getElementById("intro").textContent = rates.intro;
@@ -1057,7 +1274,7 @@ function bootWatershedPage() {
         gradeSelect.innerHTML = Object.entries(grades).map(([id, item]) => (
             `<option value="${escapeHtml(id)}">${escapeHtml(item.label)} · ${Number(item.layer_mm).toFixed(2)} mm</option>`
         )).join("");
-        state.material = materials.pla ? "pla" : (Object.keys(materials)[0] || "");
+        state.material = materials["pla-bulk"] ? "pla-bulk" : (Object.keys(materials)[0] || "");
         state.grade = grades.standard ? "standard" : (Object.keys(grades)[0] || "");
         materialSelect.value = state.material;
         gradeSelect.value = state.grade;
@@ -1110,7 +1327,7 @@ function bootWatershedPage() {
         const each = estimate.squares ? estimate.kg / estimate.squares : estimate.kg;
         const machineRate = spec.printer_life_hours > 0 ? spec.printer_cost / spec.printer_life_hours : null;
         const rateText = machineRate == null ? "" : ` The machine rate is ${moneyText(machineRate)} per hour.`;
-        note.textContent = `${estimate.material.label} is ${perKg}/kg. ${estimate.squares} squares use ${estimate.kg.toFixed(2)} kg at 15% infill (${each.toFixed(2)} kg each) at a mean height of ${estimate.heightIn.toFixed(2)} in. Print time is about ${estimate.hours.toFixed(1)} h. ${basis}${rateText} The 180 print days are the shop year and do not change that hourly rate. Height changes material and print time. Labor stays one hour per 24 in square. Shipping is not in the total.`;
+        note.textContent = `${estimate.material.label} is ${perKg}/kg. ${estimate.squares} squares use ${estimate.kg.toFixed(2)} kg at 15% infill (${each.toFixed(2)} kg each) at a mean height of ${estimate.heightIn.toFixed(2)} in. Print time is about ${estimate.hours.toFixed(1)} h. The stacked box is 24 by 24 by ${estimate.boxHeightIn.toFixed(1)} in. ${basis}${rateText} The 180 print days are the shop year and do not change that hourly rate. Height changes material and print time. Labor stays one hour per 24 in square.`;
     }
 
     function setMode(mode) {
@@ -1158,6 +1375,12 @@ function bootWatershedPage() {
     function adoptFeature(feature) {
         state.feature = feature;
         if (state.color === "topo" && !centroidInUS(feature)) state.color = "dem";
+        const rows = state.zips && state.zips.rows;
+        const zip = rows ? nearestZip(rows, featureCenter(feature)[0], featureCenter(feature)[1]) : "";
+        if (zip) {
+            state.postal = zip;
+            document.getElementById("postal").value = zip;
+        }
         render();
     }
 
@@ -1313,8 +1536,8 @@ function bootWatershedPage() {
             button.setAttribute("aria-pressed", button.dataset.color === state.color ? "true" : "false");
         });
         document.getElementById("color-note").textContent = state.feature && !topoOk
-            ? "USGS topo is available when the basin is in the United States."
-            : "Solid white, DEM, and satellite can be used for any basin. USGS topo is a United States surface.";
+            ? "USGS Topo is available when the basin is in the United States."
+            : "Solid White, DEM, and Satellite can be used for any basin. USGS Topo is a United States surface.";
         const rampSelect = document.getElementById("dem-ramp");
         const rampOn = state.color === "white" || state.color === "dem";
         rampSelect.disabled = !rampOn;
@@ -1322,7 +1545,7 @@ function bootWatershedPage() {
         const ramp = activeRamp();
         const rampNote = document.getElementById("ramp-note");
         if (!rampOn) {
-            rampNote.textContent = "The color ramp colors the DEM overview and the basin. Satellite and USGS topo replace that overview.";
+            rampNote.textContent = "The color ramp colors the DEM overview and the basin. Satellite and USGS Topo replace that overview.";
         } else if (ramp && state.rampBook) {
             rampNote.textContent = `${ramp.label} uses the same stops on the overview and the basin, from ${state.rampBook.z_min.toLocaleString("en-US")} to ${state.rampBook.z_max.toLocaleString("en-US")} m. ${state.rampBook.attribution}`;
         }
@@ -1446,9 +1669,15 @@ function bootWatershedPage() {
             parts.push(`Print time about ${days.printHours.toFixed(1)} h, about ${days.printDays} ${dayWord} if one printer runs 24 hours.${shop}`);
         }
         parts.push(days.assemblyDays == null ? "Assembly time is not set." : `Assembly is ${days.assemblyDays} day${days.assemblyDays === 1 ? "" : "s"}.`);
-        if (days.transitMin == null) parts.push("Transit for this country is not set. Shipping is not included in the total.");
-        else if (days.transitMax != null && days.transitMax !== days.transitMin) parts.push(`Transit about ${days.transitMin}–${days.transitMax} days after the model leaves Ames. Shipping is not included in the total.`);
-        else parts.push(`Transit about ${days.transitMin} days after the model leaves Ames. Shipping is not included in the total.`);
+        const ship = estimate.ship;
+        if (!estimate.ready || !ship || ship.amount == null) parts.push("Shipping needs a US ZIP Code from the census table.");
+        else {
+            const limit = ship.limited
+                ? " This box is past the 150 lb or 165 in parcel limit, so the rate extends the published 30 to 50 lb slope."
+                : "";
+            const extended = ship.extended && !ship.limited ? " The rate above 50 lb extends the published 30 to 50 lb slope." : "";
+            parts.push(`Ships from Ames ${ship.originZip} to ${ship.zip}, about ${Math.round(ship.miles)} miles, Zone ${ship.zone}. The box is 24 by 24 by ${ship.heightIn.toFixed(1)} in. Scale weight is ${ship.scaleLb.toFixed(1)} lb after 30% packaging. Dimensional weight is ${ship.dimLb.toFixed(1)} lb, so the billable weight is ${ship.billableLb} lb.${limit}${extended} UPS Ground is about ${ship.days} business days. This is the published daily base rate, without a residential surcharge.`);
+        }
         document.getElementById("eta").textContent = parts.join(" ");
         if (map) document.getElementById("map-note").textContent = mapCaption();
     }
@@ -1495,6 +1724,7 @@ function bootWatershedPage() {
             material: state.material,
             grade: state.grade,
             kitQty: state.kitQty,
+            zips: state.zips,
             country: document.getElementById("country").value,
             region: document.getElementById("region").value,
             postal: document.getElementById("postal").value,

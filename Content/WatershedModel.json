@@ -1,25 +1,98 @@
 {
-  "source": "Rates are unset until the club records material, machine, labor, kit, and shipping figures. Boundaries: Content/WatershedBoundaries.geojson, which the club will fill. Point delineation waits on delineate_url. No checkout on this page.",
+  "source": "Print rates recorded 2026-10-08. Printer $6000 over 10000 hours, 180 print days, 10% failed prints, 12 cents per kWh, 500 W, $16/h, 1 hour per 24 in square, packaging 10% of model and kits plus 30% of tile weight, safety 10%, profit 50%. Filament: PLA Bulk $12/kg from the 2026 Sunlu 5 kg pack; PLA Enterprise $32/kg from the Prusament $30-34 band; PET Bulk $12/kg above the 8 October 2026 Polymaker 10 kg PETG listing at $9/kg; PET Enterprise $30/kg in that same premium band; ASA Bulk $17/kg from the ELEGOO ASA listing at $16.99; ASA Enterprise $40/kg at the top of the October 2026 ASA range. Printable PET is PETG. Shipping: UPS Ground published daily rates effective 22 December 2025, zones by straight-line miles from Ames, dimensional weight divisor 139. Destination ZIPs are 2024 Census ZCTA internal points. Kit prices are the club's item estimates. Boundaries: Content/WatershedBoundaries.geojson. No checkout on this page.",
   "title": "Watershed Flow Model",
   "intro": "A physical watershed model made of 24-inch squares. The map starts on an example basin. Replace the boundary file when the club dataset is ready.",
   "square_inches": 24,
   "max_squares": 100,
-  "boundaries_file": "Service/SWCC/Website/Content/WatershedBoundaries.geojson",
+  "boundaries_file": "Data/Service/SWCC/Website/Content/WatershedBoundaries.geojson",
   "delineate_url": null,
   "printers": null,
   "assembly_days": null,
   "assembly_hours": null,
-  "wage_per_hour": null,
+  "wage_per_hour": 16,
   "machine_rate_per_hour": null,
   "packaging_grams": null,
-  "kit": {
-    "description": "Accessory kit. Contents and price are not recorded yet.",
-    "price": null,
-    "grams": null
+  "print": {
+    "infill": 0.15,
+    "square_in": 24,
+    "labor_hours_per_tile": 1,
+    "wage_per_hour": 16,
+    "printer_cost": 6000,
+    "printer_life_hours": 10000,
+    "active_print_days": 180,
+    "failure_rate": 0.1,
+    "energy_per_kwh": 0.12,
+    "power_w": 500,
+    "packaging_cost": 0.1,
+    "safety_factor": 0.1,
+    "profit": 0.5,
+    "basis": "PLA Bulk is $12/kg and PLA Enterprise is $32/kg. PET Bulk is $12/kg and PET Enterprise is $30/kg. ASA Bulk is $17/kg and ASA Enterprise is $40/kg. Printable PET is sold as PETG. Bulk is the multi-kilogram shop price. Enterprise is the premium single-spool price. Draft, Standard, and Fine use 15, 10, and 6 mm³/s. Infill stays 15%. The printer is $6,000 over 10,000 hours. Failed prints are 10%. Power is 500 W at 12 cents per kWh. Labor is $16 an hour, one hour for each 24 in square. Packaging is 10% of the model and kits after the reprint allowance, and packaging adds 30% to the tile weight. A 10% safety factor follows, then 50% profit. Shipping is added after profit.",
+    "materials": {
+      "pla-bulk": { "label": "PLA Bulk", "usd_per_kg": 12, "density_g_cm3": 1.24 },
+      "pla-enterprise": { "label": "PLA Enterprise", "usd_per_kg": 32, "density_g_cm3": 1.24 },
+      "pet-bulk": { "label": "PET Bulk", "usd_per_kg": 12, "density_g_cm3": 1.27 },
+      "pet-enterprise": { "label": "PET Enterprise", "usd_per_kg": 30, "density_g_cm3": 1.27 },
+      "asa-bulk": { "label": "ASA Bulk", "usd_per_kg": 17, "density_g_cm3": 1.07 },
+      "asa-enterprise": { "label": "ASA Enterprise", "usd_per_kg": 40, "density_g_cm3": 1.07 }
+    },
+    "grades": {
+      "draft": { "label": "Draft", "layer_mm": 0.28, "flow_mm3_s": 15 },
+      "standard": { "label": "Standard", "layer_mm": 0.2, "flow_mm3_s": 10 },
+      "fine": { "label": "Fine", "layer_mm": 0.12, "flow_mm3_s": 6 }
+    }
   },
+  "ship": {
+    "origin_zip": "50011",
+    "origin_lat": 42.026,
+    "origin_lon": -93.646,
+    "origin_name": "Ames, Iowa",
+    "packaging_weight": 0.3,
+    "dim_divisor": 139,
+    "box_in": 24,
+    "max_lb": 150,
+    "max_length_girth_in": 165,
+    "zone_miles": [150, 300, 600, 1000, 1400, 1800],
+    "weights_lb": [1, 2, 3, 4, 5, 10, 15, 20, 30, 50],
+    "rates": [
+      [11.99, 12.38, 13.51, 14.10, 14.60, 14.83, 15.03],
+      [12.85, 14.15, 15.46, 15.79, 16.49, 17.18, 17.40],
+      [13.38, 14.91, 16.08, 16.93, 17.65, 18.28, 19.14],
+      [13.76, 15.00, 16.80, 17.89, 18.39, 19.63, 20.51],
+      [14.19, 15.71, 17.15, 18.65, 19.45, 20.54, 21.72],
+      [15.91, 16.98, 18.75, 20.46, 21.19, 23.83, 26.29],
+      [17.96, 19.11, 20.07, 22.68, 26.20, 31.60, 35.25],
+      [19.20, 21.47, 21.88, 26.97, 31.47, 38.35, 43.33],
+      [23.20, 27.34, 29.94, 35.95, 44.95, 52.32, 62.08],
+      [29.53, 36.60, 43.61, 53.02, 66.73, 80.62, 90.26]
+    ],
+    "basis": "UPS Ground published daily rates, effective 22 December 2025. Zones are straight-line miles from Ames: 150, 300, 600, 1000, 1400, and 1800. The billable weight is the greater of scale weight and length times width times height divided by 139, rounded up. Weights between published breaks are interpolated. Above 50 lb the 30-to-50 lb slope is extended. Residential and oversize surcharges are not included."
+  },
+  "kits_intro": "Add any number of each kit. The kit price is the sum of its materials.",
+  "kits": [
+    {
+      "id": "practice",
+      "label": "Practice Kit",
+      "materials": [
+        { "name": "Clay putty, 1 lb, for dams", "price": 6 },
+        { "name": "Thin fabric, 1 yard, for filter strips", "price": 4 },
+        { "name": "Rough sprinkle, 1 lb, for surface roughness", "price": 3 },
+        { "name": "Label flags, pack of 20", "price": 5 }
+      ]
+    },
+    {
+      "id": "contaminant",
+      "label": "Contaminant Kit",
+      "materials": [
+        { "name": "Spray bottles, pack of 2", "price": 5 },
+        { "name": "Soluble tracer, 1 bottle", "price": 6 },
+        { "name": "Particulate simulant, 4 oz", "price": 4 },
+        { "name": "Markers, set of 8", "price": 7 }
+      ]
+    }
+  ],
   "colors": {
     "white": {
-      "label": "Solid white",
+      "label": "Solid White",
       "material_rate": null,
       "hours_per_square": null,
       "labor_hours_per_square": null,
@@ -43,7 +116,7 @@
       "days_per_square": null
     },
     "topo": {
-      "label": "USGS topo",
+      "label": "USGS Topo",
       "material_rate": null,
       "hours_per_square": null,
       "labor_hours_per_square": null,

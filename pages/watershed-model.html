@@ -28,11 +28,11 @@
                     <h2><button type="button" aria-expanded="true"><span>01</span> Watershed<i class="fold-mark" aria-hidden="true">−</i></button></h2>
                     <div class="fold-body">
                         <div class="choices" role="group" aria-label="How to choose a watershed">
-                            <button type="button" id="mode-catalog" aria-pressed="true">Boundary dataset</button>
-                            <button type="button" id="mode-point" aria-pressed="false">Pour point</button>
+                            <button type="button" id="mode-catalog" aria-pressed="true">Boundary Dataset</button>
+                            <button type="button" id="mode-point" aria-pressed="false">Pour Point</button>
                         </div>
                         <div id="catalog-tools">
-                            <label for="basin-search">Search the club dataset</label>
+                            <label for="basin-search">Search the Club Dataset</label>
                             <input id="basin-search" type="text" autocomplete="off">
                             <ul class="results" id="basin-results"></ul>
                         </div>
@@ -43,11 +43,11 @@
                 <section class="fold" id="fold-squares">
                     <h2><button type="button" aria-expanded="false"><span>02</span> Squares<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
-                        <label for="square-count">Number of 24-inch squares</label>
+                        <label for="square-count">Number of 24-Inch Squares</label>
                         <input id="square-count" type="number" min="1" max="100" step="1" value="4">
                         <div class="choices" role="group" aria-label="How the basin sits in the squares">
-                            <button type="button" id="align-north" aria-pressed="true">True north</button>
-                            <button type="button" id="align-max" aria-pressed="false">Largest fit</button>
+                            <button type="button" id="align-north" aria-pressed="true">True North</button>
+                            <button type="button" id="align-max" aria-pressed="false">Largest Fit</button>
                         </div>
                         <p class="size-readout" id="size-readout"></p>
                         <div class="painter" id="painter" aria-hidden="true"></div>
@@ -64,7 +64,7 @@
                             <button type="button" id="proj-albers-na" aria-pressed="false">CONUS Albers</button>
                         </div>
                         <div id="utm-zone-tools">
-                            <label for="utm-zone">UTM zone</label>
+                            <label for="utm-zone">UTM Zone</label>
                             <input id="utm-zone" type="number" min="1" max="60" step="1" value="15">
                         </div>
                         <p class="size-readout" id="projection-readout"></p>
@@ -77,14 +77,14 @@
                     <div class="fold-body">
                         <div class="choices" id="color-choices" role="group" aria-label="Surface"></div>
                         <p class="field-note" id="color-note"></p>
-                        <label for="dem-ramp">DEM color ramp</label>
+                        <label for="dem-ramp">DEM Color Ramp</label>
                         <select id="dem-ramp"></select>
                         <p class="field-note" id="ramp-note"></p>
                     </div>
                 </section>
 
                 <section class="fold" id="fold-vertical">
-                    <h2><button type="button" aria-expanded="false"><span>05</span> Vertical scale<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>05</span> Vertical Scale<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <label for="exaggeration">Exaggeration</label>
                         <input id="exaggeration" type="number" min="0" max="100" step="0.1" value="1">
@@ -96,16 +96,16 @@
                 <section class="fold is-open" id="fold-print">
                     <h2><button type="button" aria-expanded="true"><span>06</span> Print<i class="fold-mark" aria-hidden="true">−</i></button></h2>
                     <div class="fold-body">
-                        <label for="print-material">Print material</label>
+                        <label for="print-material">Print Material</label>
                         <select id="print-material"></select>
-                        <label for="print-grade">Quality grade</label>
+                        <label for="print-grade">Quality Grade</label>
                         <select id="print-grade"></select>
                         <p class="field-note" id="print-note"></p>
                     </div>
                 </section>
 
                 <section class="fold is-open" id="fold-kits">
-                    <h2><button type="button" aria-expanded="true"><span>07</span> Accessory kits<i class="fold-mark" aria-hidden="true">−</i></button></h2>
+                    <h2><button type="button" aria-expanded="true"><span>07</span> Accessory Kits<i class="fold-mark" aria-hidden="true">−</i></button></h2>
                     <div class="fold-body">
                         <div id="kit-choices"></div>
                         <p class="field-note" id="kit-note"></p>
@@ -117,9 +117,9 @@
                     <div class="fold-body">
                         <label for="country">Country</label>
                         <input id="country" type="text" value="US" autocomplete="country">
-                        <label for="region">State or region</label>
+                        <label for="region">State or Region</label>
                         <input id="region" type="text" autocomplete="address-level1">
-                        <label for="postal">Postal code</label>
+                        <label for="postal">Postal Code</label>
                         <input id="postal" type="text" autocomplete="postal-code">
                         <label for="city">City</label>
                         <input id="city" type="text" autocomplete="address-level2">
@@ -136,7 +136,7 @@
                         <div class="quote" id="quote"></div>
                         <p class="field-note" id="eta"></p>
                         <div class="actions">
-                            <button type="button" class="save-quote" id="save-quote">Save quote file</button>
+                            <button type="button" class="save-quote" id="save-quote">Save Quote File</button>
                             <button type="button" class="order-btn" id="order-btn" disabled>Order</button>
                         </div>
                     </div>
@@ -146,7 +146,7 @@
     </main>
     <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20261008f"></script>
+    <script src="../assets/js/watershed-model.js?v=20261008g"></script>
 </body>
 
 </html>
