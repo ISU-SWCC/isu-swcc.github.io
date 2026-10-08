@@ -24,6 +24,62 @@ const HUC_LABEL = {
     2: "HUC2", 4: "HUC4", 6: "HUC6", 8: "HUC8",
     10: "HUC10", 12: "HUC12", 14: "HUC14", 16: "HUC16",
 };
+const DEM_RESOLUTIONS = [30, 90, 250, 500, 1000, 2000, 5000];
+const DEM_CELL_MIN = 100000;
+const DEM_CELL_MAX = 1000000;
+
+function resolutionLabel(meters) {
+    const value = Number(meters);
+    if (value >= 1000 && value % 1000 === 0) return `${value / 1000} km`;
+    return `${value} m`;
+}
+
+function ringAreaM2(ring) {
+    if (!ring || ring.length < 4) return 0;
+    let total = 0;
+    for (let index = 0; index < ring.length - 1; index += 1) {
+        const [lon1, lat1] = ring[index];
+        const [lon2, lat2] = ring[index + 1];
+        total += ((lon2 - lon1) * Math.PI) / 180 * (Math.sin((lat2 * Math.PI) / 180) + Math.sin((lat1 * Math.PI) / 180));
+    }
+    return Math.abs(total) * WGS84_A * WGS84_A / 2;
+}
+
+function geometryAreaM2(geometry) {
+    if (!geometry) return 0;
+    if (geometry.type === "Polygon") {
+        const rings = geometry.coordinates || [];
+        let area = ringAreaM2(rings[0]);
+        rings.slice(1).forEach((hole) => {
+            area -= ringAreaM2(hole);
+        });
+        return area;
+    }
+    if (geometry.type === "MultiPolygon") {
+        return (geometry.coordinates || []).reduce((sum, part) => (
+            sum + geometryAreaM2({ type: "Polygon", coordinates: part })
+        ), 0);
+    }
+    return 0;
+}
+
+function basinAreaM2(feature) {
+    const given = feature && feature.properties ? finite(feature.properties.area_km2) : null;
+    if (given > 0) return given * 1e6;
+    const measured = feature && feature.geometry ? geometryAreaM2(feature.geometry) : 0;
+    return measured > 0 ? measured : null;
+}
+
+function defaultResolutionM(areaM2) {
+    if (!(areaM2 > 0)) return DEM_RESOLUTIONS[0];
+    const inBand = DEM_RESOLUTIONS.find((resolution) => {
+        const cells = areaM2 / (resolution * resolution);
+        return cells >= DEM_CELL_MIN && cells <= DEM_CELL_MAX;
+    });
+    if (inBand) return inBand;
+    if (areaM2 / (DEM_RESOLUTIONS[0] * DEM_RESOLUTIONS[0]) < DEM_CELL_MIN) return DEM_RESOLUTIONS[0];
+    return DEM_RESOLUTIONS[DEM_RESOLUTIONS.length - 1];
+}
 
 function featureName(feature, index) {
     const props = feature.properties || {};
@@ -1028,10 +1084,15 @@ function orderPayload(state) {
         vertical: state.vertical || null,
         print: state.printCrs ? {
             crs: state.printCrs.label,
-            resolution_m: state.elevGrid && sameCrs(state.printCrs, state.elevGrid.crs) && state.elevGrid.resolution_m != null
+            resolution_m: state.resolution,
+            published_resolution_m: state.elevGrid && state.elevGrid.resolution_m != null
                 ? state.elevGrid.resolution_m
                 : null,
         } : null,
+        dem_cells: (() => {
+            const area = basinAreaM2(state.feature);
+            return area && state.resolution ? Math.round(area / (state.resolution * state.resolution)) : null;
+        })(),
         dem_ramp: (() => {
             const chosen = state.rampBook && (state.rampBook.ramps.find((ramp) => ramp.id === state.ramp) || state.rampBook.ramps[0]);
             return chosen ? { id: chosen.id, label: chosen.label } : null;
@@ -1171,6 +1232,8 @@ function bootWatershedPage() {
         squares: new Set(),
         scale: null,
         color: "dem",
+        resolution: DEM_RESOLUTIONS[0],
+        resolutionManual: false,
         ramp: "cd-a",
         rampBook: null,
         projection: "utm",
@@ -1234,6 +1297,7 @@ function bootWatershedPage() {
         document.getElementById("intro").textContent = rates.intro;
         document.getElementById("kit-note").textContent = rates.kits_intro || "";
         buildColorButtons();
+        buildResolutionSelect();
         buildRampSelect();
         buildPrintControls();
         buildKitControls();
@@ -1277,6 +1341,13 @@ function bootWatershedPage() {
         if (!Number.isFinite(zone)) return;
         state.utmZoneManual = true;
         state.projection = "utm";
+        render();
+    });
+    document.getElementById("dem-resolution").addEventListener("change", (event) => {
+        const next = Number(event.target.value);
+        if (!DEM_RESOLUTIONS.includes(next)) return;
+        state.resolutionManual = true;
+        state.resolution = next;
         render();
     });
     document.getElementById("dem-ramp").addEventListener("change", (event) => {
@@ -1403,6 +1474,7 @@ function bootWatershedPage() {
 
     function adoptFeature(feature) {
         state.feature = feature;
+        state.resolutionManual = false;
         if (state.color === "topo" && !centroidInUS(feature)) state.color = "dem";
         const rows = state.zips && state.zips.rows;
         const zip = rows ? nearestZip(rows, featureCenter(feature)[0], featureCenter(feature)[1]) : "";
@@ -1590,7 +1662,7 @@ function bootWatershedPage() {
         const grid = state.elevGrid;
         const matched = grid && grid.crs && sameCrs(crs, grid.crs);
         if (matched && grid.resolution_m) {
-            note.textContent = `Print projection: ${crs.label}, ${grid.resolution_m} m.`;
+            note.textContent = `Print projection: ${crs.label}.`;
             return;
         }
         const sample = grid && grid.resolution_m ? ` Elevation sample: ${grid.resolution_m} m.` : "";
@@ -1616,6 +1688,51 @@ function bootWatershedPage() {
         const book = state.rampBook;
         if (!book || !book.ramps || !book.ramps.length) return null;
         return book.ramps.find((ramp) => ramp.id === state.ramp) || book.ramps[0];
+    }
+
+    function buildResolutionSelect() {
+        const select = document.getElementById("dem-resolution");
+        select.innerHTML = DEM_RESOLUTIONS.map((resolution) => (
+            `<option value="${resolution}">${escapeHtml(resolutionLabel(resolution))}</option>`
+        )).join("");
+        select.value = String(state.resolution);
+    }
+
+    function missingGridText() {
+        return `The ${resolutionLabel(state.resolution)} print grid for this basin is not on the site yet. The map still shows the 5 km DEM overview.`;
+    }
+
+    function syncResolution() {
+        if (!state.resolutionManual && state.feature) {
+            const area = basinAreaM2(state.feature);
+            if (area) state.resolution = defaultResolutionM(area);
+        }
+        const select = document.getElementById("dem-resolution");
+        if (select && select.value !== String(state.resolution)) select.value = String(state.resolution);
+        const note = document.getElementById("resolution-note");
+        if (!note) return;
+        const area = basinAreaM2(state.feature);
+        if (!area) {
+            note.textContent = "The default is the resolution that keeps the grid near 100,000 to 1,000,000 cells.";
+            return;
+        }
+        const cells = Math.round(area / (state.resolution * state.resolution));
+        const fallback = defaultResolutionM(area);
+        let text = `${resolutionLabel(state.resolution)} is about ${cells.toLocaleString("en-US")} cells.`;
+        if (state.resolution === fallback) {
+            text += " This default keeps the grid near 100,000 to 1,000,000 cells.";
+        } else {
+            text += ` The default for this basin is ${resolutionLabel(fallback)}.`;
+        }
+        const basinId = state.feature && state.feature.properties && state.feature.properties.id;
+        const published = state.elevGrid && state.elevGrid.key === basinId ? state.elevGrid.resolution_m : null;
+        if (published && published !== state.resolution) {
+            text += ` The preview uses the published ${resolutionLabel(published)} sample.`;
+        }
+        if (cells > 4000000) {
+            text += " A bake above 4,000,000 cells uses a coarser grid.";
+        }
+        note.textContent = text;
     }
 
     function buildRampSelect() {
@@ -1649,6 +1766,7 @@ function bootWatershedPage() {
             state.elevGrid = null;
             state.reliefImage = null;
         }
+        syncResolution();
         applyFit();
         const topoOk = !state.feature || centroidInUS(state.feature);
         document.querySelectorAll("#color-choices button").forEach((button) => {
@@ -1704,7 +1822,7 @@ function bootWatershedPage() {
             state.vertical = null;
             const basinId = state.feature && state.feature.properties && state.feature.properties.id;
             if (state.feature && state.elevMiss === basinId) {
-                note.textContent = "The 30 m print grid for this basin is not on the site yet. The map still shows the 5 km DEM overview.";
+                note.textContent = missingGridText();
             } else {
                 note.textContent = grid ? "Choose a basin to scale the height." : "Elevation for this basin is loading.";
             }
@@ -1726,9 +1844,15 @@ function bootWatershedPage() {
         const limited = applied + 0.001 < state.exaggeration
             ? ` The requested ${state.exaggeration} is above the cap, so ${applied.toFixed(1)} is used.`
             : "";
-        const print = state.printCrs
-            ? ` Print grid: ${state.printCrs.label}${grid.resolution_m && sameCrs(state.printCrs, grid.crs) ? `, ${grid.resolution_m} m` : ""}.`
-            : "";
+        const published = grid.resolution_m && state.printCrs && sameCrs(state.printCrs, grid.crs) ? grid.resolution_m : null;
+        let print = "";
+        if (state.printCrs) {
+            if (published && published !== state.resolution) {
+                print = ` Print grid: ${state.printCrs.label}, ${resolutionLabel(state.resolution)}. The preview sample is ${resolutionLabel(published)}.`;
+            } else {
+                print = ` Print grid: ${state.printCrs.label}${published ? `, ${resolutionLabel(published)}` : ""}.`;
+            }
+        }
         note.textContent = `Elevation spans ${Math.round(grid.min).toLocaleString("en-US")}–${Math.round(grid.max).toLocaleString("en-US")} m. Applied exaggeration is ${applied.toFixed(1)} (maximum ${limit.toFixed(1)}). The base is 0.5 in and the highest point is ${peak.totalIn.toFixed(2)} in.${limited}${print}`;
     }
 
@@ -1739,7 +1863,7 @@ function bootWatershedPage() {
         if (!id) {
             state.elevGrid = null;
             state.reliefImage = null;
-            if (note) note.textContent = "The 30 m print grid for this basin is not on the site yet. The map still shows the 5 km DEM overview.";
+            if (note) note.textContent = missingGridText();
             return;
         }
         const ramp = activeRamp();
@@ -1774,7 +1898,7 @@ function bootWatershedPage() {
             state.elevGrid = null;
             state.reliefImage = null;
             state.elevMiss = id;
-            if (note) note.textContent = "The 30 m print grid for this basin is not on the site yet. The map still shows the 5 km DEM overview.";
+            if (note) note.textContent = missingGridText();
         });
     }
 
@@ -1827,8 +1951,12 @@ function bootWatershedPage() {
         if (grid && grid.key === id) {
             if (grid.attribution) text += ` ${grid.attribution}.`;
             if (state.printCrs) {
-                const resolution = grid.resolution_m && sameCrs(state.printCrs, grid.crs) ? `, ${grid.resolution_m} m` : "";
-                text += ` Print grid: ${state.printCrs.label}${resolution}.`;
+                const published = grid.resolution_m && sameCrs(state.printCrs, grid.crs) ? grid.resolution_m : null;
+                if (published && published !== state.resolution) {
+                    text += ` Print grid: ${state.printCrs.label}, ${resolutionLabel(state.resolution)}. The preview sample is ${resolutionLabel(published)}.`;
+                } else {
+                    text += ` Print grid: ${state.printCrs.label}${published ? `, ${resolutionLabel(published)}` : ""}.`;
+                }
             }
         }
         if (state.color === "white" || state.color === "dem") {
