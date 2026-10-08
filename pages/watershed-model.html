@@ -72,11 +72,14 @@
                     </div>
                 </section>
 
-                <section class="fold" id="fold-surface">
-                    <h2><button type="button" aria-expanded="false"><span>04</span> Surface<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                <section class="fold is-open" id="fold-surface">
+                    <h2><button type="button" aria-expanded="true"><span>04</span> Surface<i class="fold-mark" aria-hidden="true">−</i></button></h2>
                     <div class="fold-body">
                         <div class="choices" id="color-choices" role="group" aria-label="Surface"></div>
                         <p class="field-note" id="color-note"></p>
+                        <label for="dem-ramp">DEM color ramp</label>
+                        <select id="dem-ramp"></select>
+                        <p class="field-note" id="ramp-note"></p>
                     </div>
                 </section>
 
@@ -133,7 +136,7 @@
     </main>
     <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20261008b"></script>
+    <script src="../assets/js/watershed-model.js?v=20261008d"></script>
 </body>
 
 </html>

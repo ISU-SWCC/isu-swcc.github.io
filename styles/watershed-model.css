@@ -71,6 +71,7 @@ body {
     color: #6e6e73;
     font-size: 14px;
     line-height: 1.45;
+    overflow-wrap: break-word;
 }
 
 .fold {
@@ -143,6 +144,10 @@ body {
     padding: 8px 10px;
     border: 1px solid #d2d2d7;
     border-radius: 8px;
+}
+
+.controls select:disabled {
+    opacity: 0.55;
 }
 
 .choices {
