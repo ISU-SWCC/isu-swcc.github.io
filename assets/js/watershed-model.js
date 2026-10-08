@@ -100,9 +100,278 @@ function factorPairs(count) {
     return pairs;
 }
 
-function fitSquares(feature, count, alignment) {
+const WGS84_A = 6378137.0;
+const WGS84_F = 1 / 298.257223563;
+const WGS84_E2 = WGS84_F * (2 - WGS84_F);
+const WGS84_EP2 = WGS84_E2 / (1 - WGS84_E2);
+
+function meridianArc(phi) {
+    const e2 = WGS84_E2;
+    const e4 = e2 * e2;
+    const e6 = e4 * e2;
+    return WGS84_A * (
+        (1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256) * phi
+        - (3 * e2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) * Math.sin(2 * phi)
+        + (15 * e4 / 256 + 45 * e6 / 1024) * Math.sin(4 * phi)
+        - (35 * e6 / 3072) * Math.sin(6 * phi)
+    );
+}
+
+function utmForward(lon, lat, zone, south) {
+    const e2 = WGS84_E2;
+    const ep2 = WGS84_EP2;
+    const k0 = 0.9996;
+    const lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+    const phi = lat * Math.PI / 180;
+    const lam = lon * Math.PI / 180;
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.cos(phi);
+    const tanPhi = Math.tan(phi);
+    const n = WGS84_A / Math.sqrt(1 - e2 * sinPhi * sinPhi);
+    const t = tanPhi * tanPhi;
+    const c = ep2 * cosPhi * cosPhi;
+    const a = (lam - lon0) * cosPhi;
+    const m = meridianArc(phi);
+    const a2 = a * a;
+    const a3 = a2 * a;
+    const a4 = a2 * a2;
+    const a5 = a4 * a;
+    const a6 = a4 * a2;
+    const east = k0 * n * (
+        a
+        + (1 - t + c) * a3 / 6
+        + (5 - 18 * t + t * t + 72 * c - 58 * ep2) * a5 / 120
+    ) + 500000.0;
+    let north = k0 * (
+        m
+        + n * tanPhi * (
+            a2 / 2
+            + (5 - t + 9 * c + 4 * c * c) * a4 / 24
+            + (61 - 58 * t + t * t + 600 * c - 330 * ep2) * a6 / 720
+        )
+    );
+    if (south) north += 10000000.0;
+    return [east, north];
+}
+
+function utmInverse(east, north, zone, south) {
+    const e2 = WGS84_E2;
+    const ep2 = WGS84_EP2;
+    const e4 = e2 * e2;
+    const e6 = e4 * e2;
+    const k0 = 0.9996;
+    const lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+    const x = east - 500000.0;
+    const y = north - (south ? 10000000.0 : 0.0);
+    const m = y / k0;
+    const mu = m / (WGS84_A * (1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256));
+    const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+    const e12 = e1 * e1;
+    const e13 = e12 * e1;
+    const e14 = e12 * e12;
+    const phi1 = (
+        mu
+        + (3 * e1 / 2 - 27 * e13 / 32) * Math.sin(2 * mu)
+        + (21 * e12 / 16 - 55 * e14 / 32) * Math.sin(4 * mu)
+        + (151 * e13 / 96) * Math.sin(6 * mu)
+        + (1097 * e14 / 512) * Math.sin(8 * mu)
+    );
+    const sinPhi = Math.sin(phi1);
+    const cosPhi = Math.cos(phi1);
+    const tanPhi = Math.tan(phi1);
+    const n1 = WGS84_A / Math.sqrt(1 - e2 * sinPhi * sinPhi);
+    const t1 = tanPhi * tanPhi;
+    const c1 = ep2 * cosPhi * cosPhi;
+    const r1 = WGS84_A * (1 - e2) / (1 - e2 * sinPhi * sinPhi) ** 1.5;
+    const d = x / (n1 * k0);
+    const d2 = d * d;
+    const d3 = d2 * d;
+    const d4 = d2 * d2;
+    const d5 = d4 * d;
+    const d6 = d4 * d2;
+    const lat = phi1 - (n1 * tanPhi / r1) * (
+        d2 / 2
+        - (5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * ep2) * d4 / 24
+        + (61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * ep2 - 3 * c1 * c1) * d6 / 720
+    );
+    const lon = lon0 + (
+        d
+        - (1 + 2 * t1 + c1) * d3 / 6
+        + (5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * ep2 + 24 * t1 * t1) * d5 / 120
+    ) / cosPhi;
+    return [lon * 180 / Math.PI, lat * 180 / Math.PI];
+}
+
+function albersQ(phi) {
+    const e = Math.sqrt(WGS84_E2);
+    const s = Math.sin(phi);
+    return (1 - WGS84_E2) * (
+        s / (1 - WGS84_E2 * s * s) - (1 / (2 * e)) * Math.log((1 - e * s) / (1 + e * s))
+    );
+}
+
+function albersM(phi) {
+    return Math.cos(phi) / Math.sqrt(1 - WGS84_E2 * Math.sin(phi) ** 2);
+}
+
+function albersConstants(lat1, lat2, lat0) {
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const phi0 = lat0 * Math.PI / 180;
+    const q1 = albersQ(phi1);
+    const q2 = albersQ(phi2);
+    const q0 = albersQ(phi0);
+    const m1 = albersM(phi1);
+    const m2 = albersM(phi2);
+    const n = Math.abs(q2 - q1) < 1e-14 ? Math.sin(phi1) : (m1 * m1 - m2 * m2) / (q2 - q1);
+    const c = m1 * m1 + n * q1;
+    const rho0 = WGS84_A * Math.sqrt(c - n * q0) / n;
+    return { n, c, rho0 };
+}
+
+function albersForward(lon, lat, lat1, lat2, lat0, lon0) {
+    const constants = albersConstants(lat1, lat2, lat0);
+    const q = albersQ(lat * Math.PI / 180);
+    const rho = WGS84_A * Math.sqrt(Math.max(0, constants.c - constants.n * q)) / constants.n;
+    const theta = constants.n * (lon - lon0) * Math.PI / 180;
+    return [rho * Math.sin(theta), constants.rho0 - rho * Math.cos(theta)];
+}
+
+function phiFromQ(q) {
+    let phi = Math.asin(Math.max(-1, Math.min(1, q / 2)));
+    for (let step = 0; step < 20; step += 1) {
+        const qn = albersQ(phi);
+        const delta = 1e-8;
+        const slope = (albersQ(phi + delta) - qn) / delta;
+        if (Math.abs(slope) < 1e-14) break;
+        const change = (qn - q) / slope;
+        phi -= change;
+        if (Math.abs(change) < 1e-14) break;
+    }
+    return phi;
+}
+
+function albersInverse(east, north, lat1, lat2, lat0, lon0) {
+    const { n, c, rho0 } = albersConstants(lat1, lat2, lat0);
+    let theta;
+    let rho;
+    if (n > 0) {
+        theta = Math.atan2(east, rho0 - north);
+        rho = Math.hypot(east, rho0 - north);
+    } else {
+        theta = Math.atan2(-east, north - rho0);
+        rho = -Math.hypot(east, rho0 - north);
+    }
+    const q = (c - (rho * n / WGS84_A) ** 2) / n;
+    const phi = phiFromQ(q);
+    const lam = lon0 * Math.PI / 180 + theta / n;
+    return [lam * 180 / Math.PI, phi * 180 / Math.PI];
+}
+
+function projectPoint(lon, lat, crs) {
+    if (crs.kind === "utm") return utmForward(lon, lat, crs.zone, crs.south);
+    return albersForward(lon, lat, crs.lat_1, crs.lat_2, crs.lat_0, crs.lon_0);
+}
+
+function unprojectPoint(east, north, crs) {
+    if (crs.kind === "utm") return utmInverse(east, north, crs.zone, crs.south);
+    return albersInverse(east, north, crs.lat_1, crs.lat_2, crs.lat_0, crs.lon_0);
+}
+
+function utmZoneFromLon(lon) {
+    return Math.min(60, Math.max(1, Math.floor((lon + 180) / 6) + 1));
+}
+
+function crsUtm(zone, south) {
+    const number = Math.min(60, Math.max(1, Math.floor(zone) || 1));
+    return {
+        kind: "utm",
+        zone: number,
+        south: !!south,
+        epsg: (south ? 32700 : 32600) + number,
+        label: `UTM zone ${number}${south ? "S" : "N"}`,
+    };
+}
+
+function crsAlbersBasin(bounds) {
+    const south = bounds[1];
+    const north = bounds[3];
+    const span = Math.max(0.5, north - south);
+    return {
+        kind: "albers",
+        lat_1: south + span / 6,
+        lat_2: north - span / 6,
+        lat_0: (south + north) / 2,
+        lon_0: (bounds[0] + bounds[2]) / 2,
+        epsg: null,
+        label: "Albers equal area",
+    };
+}
+
+function crsAlbersNA() {
+    return {
+        kind: "albers",
+        lat_1: 29.5,
+        lat_2: 45.5,
+        lat_0: 23,
+        lon_0: -96,
+        epsg: 5070,
+        label: "Albers equal area EPSG:5070",
+    };
+}
+
+function sameCrs(a, b) {
+    if (!a || !b || a.kind !== b.kind) return false;
+    if (a.kind === "utm") return a.zone === b.zone && !!a.south === !!b.south;
+    return Math.abs(a.lat_1 - b.lat_1) < 1e-6
+        && Math.abs(a.lat_2 - b.lat_2) < 1e-6
+        && Math.abs(a.lat_0 - b.lat_0) < 1e-6
+        && Math.abs(a.lon_0 - b.lon_0) < 1e-6;
+}
+
+function projectOutline(geometry, crs) {
+    const visit = (coords) => {
+        if (coords && typeof coords[0] === "number") return projectPoint(coords[0], coords[1], crs);
+        return coords.map(visit);
+    };
+    return visit(geometry.coordinates);
+}
+
+function outlinePoints(outline) {
+    const points = [];
+    const visit = (coords) => {
+        if (coords && typeof coords[0] === "number") {
+            points.push([coords[0], coords[1]]);
+            return;
+        }
+        if (Array.isArray(coords)) coords.forEach(visit);
+    };
+    visit(outline);
+    return points;
+}
+
+function fitSquares(feature, count, alignment, outline, crs) {
     const n = Math.max(1, Math.min(100, Math.floor(count) || 1));
-    const { lng0, lat0, points } = featurePointsMeters(feature);
+    let lng0;
+    let lat0;
+    let points;
+    let origin = null;
+    let fitCrs = null;
+    const raw = outline && crs ? outlinePoints(outline) : [];
+    if (raw.length) {
+        const frame = boundsOf(raw);
+        origin = [frame.cx, frame.cy];
+        points = raw.map(([east, north]) => [east - origin[0], north - origin[1]]);
+        fitCrs = crs;
+        const center = featureCenter(feature);
+        lng0 = center[0];
+        lat0 = center[1];
+    } else {
+        const local = featurePointsMeters(feature);
+        lng0 = local.lng0;
+        lat0 = local.lat0;
+        points = local.points;
+    }
     const border = n > 1 ? 0.5 : 0;
     const angles = alignment === "max" ? Array.from({ length: 180 }, (_, index) => index) : [0];
     let best = null;
@@ -118,6 +387,7 @@ function fitSquares(feature, count, alignment) {
                 best = {
                     cols, rows, rotationDeg: deg, inchesPerMeter, borderIn: border,
                     lng0, lat0, count: n, cx: box.cx, cy: box.cy,
+                    crs: fitCrs, origin,
                 };
             }
         });
@@ -141,6 +411,7 @@ function modelInchesToLngLat(mx, my, fit) {
     const s = Math.sin(t);
     const east = rx * c + ry * s;
     const north = -rx * s + ry * c;
+    if (fit.crs && fit.origin) return unprojectPoint(east + fit.origin[0], north + fit.origin[1], fit.crs);
     return localLngLat(east, north, fit.lng0, fit.lat0);
 }
 
@@ -413,66 +684,87 @@ function orderPayload(state) {
         missing,
         delivery: deliveryDays(state),
         vertical: state.vertical || null,
+        print: state.printCrs ? {
+            crs: state.printCrs.label,
+            resolution_m: state.elevGrid && sameCrs(state.printCrs, state.elevGrid.crs) && state.elevGrid.resolution_m != null
+                ? state.elevGrid.resolution_m
+                : null,
+        } : null,
         quote_complete: missing.length === 0 && Boolean(state.feature) && state.squares.size > 0,
     };
 }
 
-async function sampleElevations(feature) {
-    const box = featureBbox(feature);
-    const n = 9;
-    const lats = [];
-    const lngs = [];
-    const inside = [];
-    for (let row = 0; row < n; row += 1) {
-        for (let col = 0; col < n; col += 1) {
-            const lng = box[0] + ((col + 0.5) / n) * (box[2] - box[0]);
-            const lat = box[1] + ((row + 0.5) / n) * (box[3] - box[1]);
-            lngs.push(lng);
-            lats.push(lat);
-            inside.push(pointInFeature(lng, lat, feature));
-        }
+function decodeElevationValues(payload) {
+    const binary = atob(payload.values);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    const view = new DataView(bytes.buffer);
+    const count = payload.rows * payload.cols;
+    const values = new Array(count);
+    for (let index = 0; index < count; index += 1) {
+        const sample = view.getInt16(index * 2, true);
+        values[index] = sample === payload.nodata ? null : sample;
     }
-    const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats.join(",")}&longitude=${lngs.join(",")}`;
-    const response = await fetch(url);
+    return values;
+}
+
+async function sampleElevations(feature, signal) {
+    const id = feature.properties && feature.properties.id;
+    if (!id) throw new Error("no id");
+    const response = await fetch(assetPath(`data/elevation/${id}.json`), { signal });
     if (!response.ok) throw new Error(String(response.status));
     const data = await response.json();
-    const values = data.elevation.map((value, index) => (inside[index] ? value : null));
-    const present = values.filter((value) => value != null);
-    if (!present.length) throw new Error("no elevation");
+    let streams = null;
+    if (data.streams) {
+        const streamResponse = await fetch(assetPath(data.streams), { signal });
+        if (streamResponse.ok) streams = await streamResponse.json();
+    }
     return {
-        n,
-        values,
-        box,
-        min: Math.min(...present),
-        max: Math.max(...present),
-        key: featureName(feature, 0) + box.join(","),
+        n: data.cols,
+        rows: data.rows,
+        cols: data.cols,
+        values: decodeElevationValues(data),
+        box: data.box,
+        min: data.min,
+        max: data.max,
+        key: id,
+        crs: data.crs,
+        crs_label: data.crs_label,
+        resolution_m: data.resolution_m,
+        outline_m: data.outline_m,
+        attribution: data.attribution,
+        streams,
     };
 }
 
 function paintRelief(grid, exaggeration) {
-    const n = grid.n;
+    const rows = grid.rows || grid.n;
+    const cols = grid.cols || grid.n;
+    const scale = Math.max(1, Math.min(8, Math.floor(1024 / Math.max(rows, cols))));
     const canvas = document.createElement("canvas");
-    canvas.width = n * 8;
-    canvas.height = n * 8;
+    canvas.width = cols * scale;
+    canvas.height = rows * scale;
     const ctx = canvas.getContext("2d");
-    const image = ctx.createImageData(n, n);
-    const cellM = Math.max(1, ((grid.box[2] - grid.box[0]) * 111320 * Math.cos((((grid.box[1] + grid.box[3]) / 2) * Math.PI) / 180)) / n);
+    const image = ctx.createImageData(cols, rows);
+    const midLat = (((grid.box[1] + grid.box[3]) / 2) * Math.PI) / 180;
+    const cellX = Math.max(1, ((grid.box[2] - grid.box[0]) * 111320 * Math.cos(midLat)) / cols);
+    const cellY = Math.max(1, ((grid.box[3] - grid.box[1]) * 110540) / rows);
     const at = (row, col) => {
-        if (row < 0 || col < 0 || row >= n || col >= n) return null;
-        return grid.values[row * n + col];
+        if (row < 0 || col < 0 || row >= rows || col >= cols) return null;
+        return grid.values[row * cols + col];
     };
-    for (let row = 0; row < n; row += 1) {
-        for (let col = 0; col < n; col += 1) {
+    for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
             const elev = at(row, col);
-            const pixel = ((n - 1 - row) * n + col) * 4;
+            const pixel = ((rows - 1 - row) * cols + col) * 4;
             if (elev == null) {
                 image.data[pixel + 3] = 0;
                 continue;
             }
             const east = at(row, col + 1);
             const north = at(row + 1, col);
-            const dzdx = ((east == null ? elev : east) - elev) / cellM;
-            const dzdy = ((north == null ? elev : north) - elev) / cellM;
+            const dzdx = ((east == null ? elev : east) - elev) / cellX;
+            const dzdy = ((north == null ? elev : north) - elev) / cellY;
             const light = 0.78 + Math.max(-0.28, Math.min(0.28, (dzdy - dzdx) * exaggeration * 2));
             const color = reliefColor(elev).map((channel) => Math.max(0, Math.min(255, Math.round(channel * light))));
             image.data[pixel] = color[0];
@@ -482,8 +774,8 @@ function paintRelief(grid, exaggeration) {
         }
     }
     const sample = document.createElement("canvas");
-    sample.width = n;
-    sample.height = n;
+    sample.width = cols;
+    sample.height = rows;
     sample.getContext("2d").putImageData(image, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(sample, 0, 0, canvas.width, canvas.height);
@@ -528,11 +820,15 @@ function bootWatershedPage() {
         fit: null,
         squares: new Set(),
         scale: null,
-        color: "white",
+        color: "dem",
+        projection: "utm",
+        utmZoneManual: false,
+        printCrs: null,
         exaggeration: 1,
         elevGrid: null,
         reliefImage: null,
         elevLoading: null,
+        elevAbort: null,
         kits: 0,
         country: "US",
         region: "",
@@ -594,6 +890,25 @@ function bootWatershedPage() {
     });
     document.getElementById("align-north").addEventListener("click", () => setAlignment("north"));
     document.getElementById("align-max").addEventListener("click", () => setAlignment("max"));
+    document.getElementById("proj-utm").addEventListener("click", () => {
+        state.projection = "utm";
+        render();
+    });
+    document.getElementById("proj-albers").addEventListener("click", () => {
+        state.projection = "albers";
+        render();
+    });
+    document.getElementById("proj-albers-na").addEventListener("click", () => {
+        state.projection = "albers-na";
+        render();
+    });
+    document.getElementById("utm-zone").addEventListener("input", (event) => {
+        const zone = Number(event.target.value);
+        if (!Number.isFinite(zone)) return;
+        state.utmZoneManual = true;
+        state.projection = "utm";
+        render();
+    });
     document.getElementById("exaggeration").addEventListener("input", (event) => {
         const next = Number(event.target.value);
         state.exaggeration = Number.isFinite(next) ? Math.min(100, Math.max(0, next)) : 0;
@@ -681,16 +996,76 @@ function bootWatershedPage() {
         });
     }
 
+    function autoZone() {
+        const id = state.feature && state.feature.properties && state.feature.properties.id;
+        const grid = state.elevGrid;
+        if (grid && grid.key === id && grid.crs && grid.crs.kind === "utm") return grid.crs.zone;
+        if (!state.feature) return 15;
+        return utmZoneFromLon(featureCenter(state.feature)[0]);
+    }
+
+    function chosenCrs() {
+        if (!state.feature) return null;
+        const bounds = featureBbox(state.feature);
+        if (state.projection === "albers") return crsAlbersBasin(bounds);
+        if (state.projection === "albers-na") return crsAlbersNA();
+        const zone = state.utmZoneManual ? Number(document.getElementById("utm-zone").value) : autoZone();
+        let south = (bounds[1] + bounds[3]) / 2 < 0;
+        const id = state.feature.properties && state.feature.properties.id;
+        const grid = state.elevGrid;
+        if (!state.utmZoneManual && grid && grid.key === id && grid.crs && grid.crs.kind === "utm" && grid.crs.zone === zone) {
+            south = !!grid.crs.south;
+        }
+        return crsUtm(zone, south);
+    }
+
     function applyFit() {
         if (!state.feature) {
             state.fit = null;
             state.squares = new Set();
             state.scale = null;
+            state.printCrs = null;
             return;
         }
-        state.fit = fitSquares(state.feature, state.squareCount, state.alignment);
+        const crs = chosenCrs();
+        state.printCrs = crs;
+        const id = state.feature.properties && state.feature.properties.id;
+        const grid = state.elevGrid;
+        const baked = crs && grid && grid.key === id && grid.outline_m && grid.crs && sameCrs(grid.crs, crs);
+        const outline = baked ? grid.outline_m : projectOutline(state.feature.geometry, crs);
+        state.fit = fitSquares(
+            state.feature,
+            state.squareCount,
+            state.alignment,
+            outline,
+            crs,
+        );
         state.squares = state.fit.squares;
         state.scale = state.fit.metersPerInch * 24;
+    }
+
+    function renderProjection() {
+        document.getElementById("proj-utm").setAttribute("aria-pressed", state.projection === "utm" ? "true" : "false");
+        document.getElementById("proj-albers").setAttribute("aria-pressed", state.projection === "albers" ? "true" : "false");
+        document.getElementById("proj-albers-na").setAttribute("aria-pressed", state.projection === "albers-na" ? "true" : "false");
+        document.getElementById("utm-zone-tools").hidden = state.projection !== "utm";
+        const crs = state.printCrs;
+        if (state.projection === "utm" && !state.utmZoneManual && crs && crs.zone) {
+            document.getElementById("utm-zone").value = String(crs.zone);
+        }
+        const note = document.getElementById("projection-readout");
+        if (!crs) {
+            note.textContent = "Choose a basin to set the print projection.";
+            return;
+        }
+        const grid = state.elevGrid;
+        const matched = grid && grid.crs && sameCrs(crs, grid.crs);
+        if (matched && grid.resolution_m) {
+            note.textContent = `Print projection: ${crs.label}, ${grid.resolution_m} m.`;
+            return;
+        }
+        const sample = grid && grid.resolution_m ? ` Elevation sample: ${grid.resolution_m} m.` : "";
+        note.textContent = `Print projection: ${crs.label}.${sample} The squares refit in this projection.`;
     }
 
     function renderLayout() {
@@ -725,6 +1100,11 @@ function bootWatershedPage() {
 
     function render() {
         if (!state.rates) return;
+        const id = state.feature && state.feature.properties && state.feature.properties.id;
+        if (state.elevGrid && state.elevGrid.key !== id) {
+            state.elevGrid = null;
+            state.reliefImage = null;
+        }
         applyFit();
         const topoOk = !state.feature || centroidInUS(state.feature);
         document.querySelectorAll("#color-choices button").forEach((button) => {
@@ -754,6 +1134,7 @@ function bootWatershedPage() {
             document.getElementById("size-readout").textContent = `${fit.cols} × ${fit.rows} squares. The model is ${fit.outerWidthIn} in × ${fit.outerHeightIn} in. 1 inch represents ${ground} of ground. ${border} ${facing}`;
         }
         renderLayout();
+        renderProjection();
         renderVertical();
         renderQuote();
         ensureElevation();
@@ -785,28 +1166,45 @@ function bootWatershedPage() {
         const limited = applied + 0.001 < state.exaggeration
             ? ` The requested ${state.exaggeration} is above the cap, so ${applied.toFixed(1)} is used.`
             : "";
-        note.textContent = `Elevation spans ${Math.round(grid.min).toLocaleString("en-US")}–${Math.round(grid.max).toLocaleString("en-US")} m. Applied exaggeration is ${applied.toFixed(1)} (maximum ${limit.toFixed(1)}). The base is 0.5 in and the highest point is ${peak.totalIn.toFixed(2)} in.${limited}`;
+        const print = state.printCrs
+            ? ` Print grid: ${state.printCrs.label}${grid.resolution_m && sameCrs(state.printCrs, grid.crs) ? `, ${grid.resolution_m} m` : ""}.`
+            : "";
+        note.textContent = `Elevation spans ${Math.round(grid.min).toLocaleString("en-US")}–${Math.round(grid.max).toLocaleString("en-US")} m. Applied exaggeration is ${applied.toFixed(1)} (maximum ${limit.toFixed(1)}). The base is 0.5 in and the highest point is ${peak.totalIn.toFixed(2)} in.${limited}${print}`;
     }
 
     function ensureElevation() {
         if (!state.feature) return;
-        const key = featureName(state.feature, 0) + featureBbox(state.feature).join(",");
-        if (state.elevGrid && state.elevGrid.key === key) {
+        const id = state.feature.properties && state.feature.properties.id;
+        const note = document.getElementById("vert-readout");
+        if (!id) {
+            state.elevGrid = null;
+            state.reliefImage = null;
+            if (note) note.textContent = "Elevation for this basin has not been baked.";
+            return;
+        }
+        if (state.elevGrid && state.elevGrid.key === id) {
             if (!state.reliefImage) state.reliefImage = paintRelief(state.elevGrid, state.vertical ? state.vertical.applied : state.exaggeration);
             return;
         }
-        if (state.elevLoading === key) return;
-        state.elevLoading = key;
-        sampleElevations(state.feature).then((grid) => {
-            if (!state.feature || featureName(state.feature, 0) + featureBbox(state.feature).join(",") !== key) return;
+        if (state.elevLoading === id) return;
+        if (state.elevAbort) state.elevAbort.abort();
+        const controller = new AbortController();
+        state.elevAbort = controller;
+        state.elevLoading = id;
+        sampleElevations(state.feature, controller.signal).then((grid) => {
+            if (controller.signal.aborted) return;
+            if (!state.feature || !(state.feature.properties && state.feature.properties.id === id)) return;
             state.elevGrid = grid;
             state.elevLoading = null;
             state.reliefImage = null;
             render();
-        }).catch(() => {
+        }).catch((error) => {
+            if (error && error.name === "AbortError") return;
+            if (state.elevAbort !== controller) return;
             state.elevLoading = null;
-            const note = document.getElementById("vert-readout");
-            if (note) note.textContent = "Elevation did not load. The map still shows the basin.";
+            state.elevGrid = null;
+            state.reliefImage = null;
+            if (note) note.textContent = "Elevation for this basin has not been baked.";
         });
     }
 
@@ -826,10 +1224,27 @@ function bootWatershedPage() {
         else if (days.transitMax != null && days.transitMax !== days.transitMin) parts.push(`Transit about ${days.transitMin}–${days.transitMax} days after the model leaves Ames.`);
         else parts.push(`Transit about ${days.transitMin} days after the model leaves Ames.`);
         document.getElementById("eta").textContent = parts.join(" ");
+        if (map) document.getElementById("map-note").textContent = mapCaption();
+    }
+
+    function mapCaption() {
+        if (!state.feature) return "Choose a basin, or save a pour point.";
         const exampleOnly = state.boundaries.length === 1 && state.boundaries[0].properties && state.boundaries[0].properties.example;
-        document.getElementById("map-note").textContent = state.feature
-            ? `${featureName(state.feature, 0)}${exampleOnly ? " is an example, standing in until the club boundary dataset is loaded" : ""}. The red line is the basin. The black squares are the model. The surface inside them is a preview, not the print file.`
-            : "Choose a basin, or save a pour point.";
+        const name = featureName(state.feature, 0);
+        let text = `${name}${exampleOnly ? " is an example, standing in until the club boundary dataset is loaded" : ""}. The red line is the basin. The black squares are the model. The surface inside them is a preview, not the print file.`;
+        const id = state.feature.properties && state.feature.properties.id;
+        const grid = state.elevGrid;
+        if (grid && grid.key === id) {
+            if (grid.attribution) text += ` ${grid.attribution}.`;
+            if (state.printCrs) {
+                const resolution = grid.resolution_m && sameCrs(state.printCrs, grid.crs) ? `, ${grid.resolution_m} m` : "";
+                text += ` Print grid: ${state.printCrs.label}${resolution}.`;
+            }
+        }
+        if (state.color === "white" || state.color === "dem") {
+            text += " The base map is a Copernicus DEM overview at about 5 km, for finding the basin.";
+        }
+        return text;
     }
 
     function readForm() {
@@ -845,6 +1260,8 @@ function bootWatershedPage() {
             color: state.color,
             exaggeration: state.exaggeration,
             vertical: state.vertical,
+            elevGrid: state.elevGrid,
+            printCrs: state.printCrs,
             kits: state.kits,
             country: document.getElementById("country").value,
             region: document.getElementById("region").value,
@@ -859,7 +1276,8 @@ function bootWatershedPage() {
         if (!map) return;
         const styleColor = state.color;
         const fit = state.fit;
-        const signature = `${styleColor}|${state.feature ? featureName(state.feature, 0) : ""}|${fit ? `${fit.cols}x${fit.rows}@${fit.rotationDeg}` : ""}|${state.pourPoint}|${state.exaggeration}|${state.reliefImage ? state.reliefImage.exaggeration : ""}|${state.elevGrid ? state.elevGrid.key : ""}`;
+        const printKey = state.printCrs ? state.printCrs.label : "";
+        const signature = `${styleColor}|${printKey}|${state.feature ? featureName(state.feature, 0) : ""}|${fit ? `${fit.cols}x${fit.rows}@${fit.rotationDeg}` : ""}|${state.pourPoint}|${state.exaggeration}|${state.reliefImage ? state.reliefImage.exaggeration : ""}|${state.elevGrid ? state.elevGrid.key : ""}`;
         if (map._swccSignature === signature) return;
         map._swccSignature = signature;
         const token = (map._swccToken || 0) + 1;
@@ -908,6 +1326,19 @@ function bootWatershedPage() {
                 map.addLayer({ id: "relief", type: "raster", source: "relief" });
                 document.getElementById("map").dataset.dem = "shown";
             }
+            const basinId = state.feature && state.feature.properties && state.feature.properties.id;
+            const streams = state.elevGrid && state.elevGrid.key === basinId ? state.elevGrid.streams : null;
+            if (styleColor === "dem" && streams && streams.features && streams.features.length) {
+                map.addSource("streams", { type: "geojson", data: streams });
+                map.addLayer({
+                    id: "streams",
+                    type: "line",
+                    source: "streams",
+                    paint: { "line-color": "#143d66", "line-width": 1.5 },
+                });
+                document.getElementById("map").dataset.streams = "shown";
+            }
+            document.getElementById("map-note").textContent = mapCaption();
             if (state.feature) {
                 map.addSource("basin", { type: "geojson", data: state.feature });
                 map.addLayer({
@@ -975,7 +1406,19 @@ function mapStyle(color) {
     };
     const base = bases[color];
     if (!base) {
-        return { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#f7f7f5" } }] };
+        return {
+            version: 8,
+            sources: {
+                overview: {
+                    type: "raster",
+                    tiles: [assetPath("data/map/{z}/{x}/{y}.png")],
+                    tileSize: 256,
+                    maxzoom: 4,
+                    attribution: "Copernicus DEM GLO-30",
+                },
+            },
+            layers: [{ id: "overview", type: "raster", source: "overview" }],
+        };
     }
     return {
         version: 8,

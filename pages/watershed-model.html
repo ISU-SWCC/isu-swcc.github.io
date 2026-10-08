@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Watershed Flow Model — Soil and Water Conservation Club</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
-    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+    <link href="../assets/vendor/maplibre-gl/maplibre-gl.css" rel="stylesheet">
     <link rel="stylesheet" href="../styles/watershed-model.css">
 </head>
 
@@ -55,8 +55,25 @@
                     </div>
                 </section>
 
+                <section class="fold" id="fold-projection">
+                    <h2><button type="button" aria-expanded="false"><span>03</span> Projection<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                    <div class="fold-body">
+                        <div class="choices" role="group" aria-label="Print projection">
+                            <button type="button" id="proj-utm" aria-pressed="true">UTM</button>
+                            <button type="button" id="proj-albers" aria-pressed="false">Albers</button>
+                            <button type="button" id="proj-albers-na" aria-pressed="false">CONUS Albers</button>
+                        </div>
+                        <div id="utm-zone-tools">
+                            <label for="utm-zone">UTM zone</label>
+                            <input id="utm-zone" type="number" min="1" max="60" step="1" value="15">
+                        </div>
+                        <p class="size-readout" id="projection-readout"></p>
+                        <p class="field-note">UTM uses the zone you choose. Albers is an equal-area projection fit to this basin. CONUS Albers is EPSG:5070. The squares refit in the projection you pick. The elevation heights stay the same.</p>
+                    </div>
+                </section>
+
                 <section class="fold" id="fold-surface">
-                    <h2><button type="button" aria-expanded="false"><span>03</span> Surface<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>04</span> Surface<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <div class="choices" id="color-choices" role="group" aria-label="Surface"></div>
                         <p class="field-note" id="color-note"></p>
@@ -64,7 +81,7 @@
                 </section>
 
                 <section class="fold" id="fold-vertical">
-                    <h2><button type="button" aria-expanded="false"><span>04</span> Vertical scale<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>05</span> Vertical scale<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <label for="exaggeration">Exaggeration</label>
                         <input id="exaggeration" type="number" min="0" max="100" step="0.1" value="1">
@@ -74,7 +91,7 @@
                 </section>
 
                 <section class="fold" id="fold-kits">
-                    <h2><button type="button" aria-expanded="false"><span>05</span> Accessory kits<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>06</span> Accessory kits<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <label for="kits">Quantity</label>
                         <input id="kits" type="number" min="0" step="1" value="0">
@@ -83,7 +100,7 @@
                 </section>
 
                 <section class="fold" id="fold-delivery">
-                    <h2><button type="button" aria-expanded="false"><span>06</span> Delivery<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>07</span> Delivery<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <label for="country">Country</label>
                         <input id="country" type="text" value="US" autocomplete="country">
@@ -101,7 +118,7 @@
                 </section>
 
                 <section class="fold" id="fold-quote">
-                    <h2><button type="button" aria-expanded="false"><span>07</span> Quote<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>08</span> Quote<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <div class="quote" id="quote"></div>
                         <p class="field-note" id="eta"></p>
@@ -114,9 +131,9 @@
             </form>
         </div>
     </main>
-    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20260925c"></script>
+    <script src="../assets/js/watershed-model.js?v=20261008b"></script>
 </body>
 
 </html>
