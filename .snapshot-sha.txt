@@ -1,5 +1,5 @@
-sha: 749dbafba6a281f40b49107801d1f317c8e82ee2
+sha: 0716189498c5ad4871d3384735e57033d345f4b2
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-08
-note: This commit is the watershed elevation and projection update pushed to GitHub Pages. The vault folder is the working copy. Publish again the same way when the live site should change.
+note: This commit adds the shared DEM color ramp on the watershed page. The vault folder is the working copy. Publish again the same way when the live site should change.
