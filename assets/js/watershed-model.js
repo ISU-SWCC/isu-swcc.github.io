@@ -541,34 +541,132 @@ function basinCoverage(feature, keys, scale) {
     return covered / inside;
 }
 
+const CUBIC_INCH_CM3 = 16.387064;
+
+function kitUnitPrice(kit) {
+    return (kit.materials || []).reduce((sum, item) => sum + (finite(item.price) || 0), 0);
+}
+
+function meanHeightIn(grid, fit, exaggeration) {
+    if (!grid || !fit || !(fit.metersPerInch > 0) || !grid.values) return null;
+    let sum = 0;
+    let count = 0;
+    grid.values.forEach((value) => {
+        if (value == null) return;
+        sum += value;
+        count += 1;
+    });
+    if (!count) return null;
+    const rise = Math.max(0, (sum / count) - grid.min) / fit.metersPerInch * (Number(exaggeration) || 0);
+    return 0.5 + rise;
+}
+
+function printEstimate(state) {
+    const spec = state.rates && state.rates.print;
+    const material = spec && spec.materials ? spec.materials[state.material] : null;
+    const grade = spec && spec.grades ? spec.grades[state.grade] : null;
+    const squares = state.squares ? state.squares.size : 0;
+    const height = meanHeightIn(
+        state.elevGrid,
+        state.fit,
+        state.vertical ? state.vertical.applied : state.exaggeration,
+    );
+    if (!spec || !material || !grade || !squares || height == null) return { ready: false };
+    const infill = finite(spec.infill);
+    const density = finite(material.density_g_cm3);
+    const price = finite(material.usd_per_kg);
+    const flow = finite(grade.flow_mm3_s);
+    const square = finite(spec.square_in);
+    const life = finite(spec.printer_life_hours);
+    const printer = finite(spec.printer_cost);
+    const power = finite(spec.power_w);
+    const energy = finite(spec.energy_per_kwh);
+    const wage = finite(spec.wage_per_hour);
+    const laborEach = finite(spec.labor_hours_per_tile);
+    const failure = finite(spec.failure_rate);
+    const safety = finite(spec.safety_factor);
+    const profit = finite(spec.profit);
+    const numbers = [infill, density, price, flow, square, life, printer, power, energy, wage, laborEach, failure, safety, profit];
+    if (numbers.some((value) => value == null) || failure >= 1 || life <= 0 || flow <= 0) return { ready: false };
+    const plasticCm3 = square * square * height * CUBIC_INCH_CM3 * infill;
+    const kg = (plasticCm3 * density / 1000) * squares;
+    const hours = ((plasticCm3 * 1000) / flow / 3600) * squares;
+    const tileFactor = (square / 24) * (square / 24);
+    const laborHours = squares * laborEach * tileFactor;
+    const materialCost = kg * price;
+    const machineCost = hours * (printer / life);
+    const energyCost = hours * (power / 1000) * energy;
+    const laborCost = laborHours * wage;
+    const production = materialCost + machineCost + energyCost + laborCost;
+    const withFailure = production / (1 - failure);
+    let kitTotal = 0;
+    const kitLines = (state.rates.kits || []).map((kit) => {
+        const qty = Math.max(0, Math.floor(finite(state.kitQty && state.kitQty[kit.id]) || 0));
+        const amount = qty * kitUnitPrice(kit);
+        kitTotal += amount;
+        return { id: kit.id, label: kit.label, qty, amount };
+    });
+    const before = withFailure + kitTotal;
+    const safetyAmount = before * safety;
+    const profitAmount = (before + safetyAmount) * profit;
+    return {
+        ready: true,
+        material,
+        grade,
+        squares,
+        heightIn: height,
+        kg,
+        hours,
+        laborHours,
+        materialCost,
+        machineCost,
+        energyCost,
+        laborCost,
+        reprint: withFailure - production,
+        kitLines,
+        safetyAmount,
+        profitAmount,
+        total: before + safetyAmount + profitAmount,
+        activeDays: finite(spec.active_print_days),
+    };
+}
+
 function quoteLines(state) {
-    const color = state.rates.colors[state.color] || {};
-    const n = state.squares.size;
-    const kits = state.kits;
-    const wage = finite(state.rates.wage_per_hour);
-    const machine = finite(state.rates.machine_rate_per_hour);
+    const estimate = printEstimate(state);
+    if (!estimate.ready) {
+        return [
+            { label: "Print estimate", amount: null },
+            { label: "Accessory kits", amount: 0 },
+        ];
+    }
     const lines = [
-        ["Squares, material", product([n, finite(color.material_rate)])],
-        ["Squares, machine", product([n, finite(color.hours_per_square), machine])],
-        ["Squares, labor", product([n, finite(color.labor_hours_per_square), wage])],
-        ["Assembly labor", product([finite(state.rates.assembly_hours), wage])],
+        { label: `Material, ${estimate.material.label}, ${estimate.kg.toFixed(2)} kg`, amount: estimate.materialCost },
+        { label: `Printer, ${estimate.squares} ${estimate.squares === 1 ? "square" : "squares"}, ${estimate.hours.toFixed(1)} h`, amount: estimate.machineCost },
+        { label: "Energy", amount: estimate.energyCost },
+        { label: `Labor, ${estimate.laborHours.toFixed(1)} h`, amount: estimate.laborCost },
+        { label: "Reprint allowance, 10%", amount: estimate.reprint },
     ];
-    if (kits === 0) lines.push(["Accessory kits", 0]);
-    else lines.push(["Accessory kits", product([kits, finite(state.rates.kit && state.rates.kit.price)])]);
-    const grams = shipmentGrams(state);
-    lines.push(["Shipping", shippingCost(state, grams)]);
-    return lines.map(([label, amount]) => ({ label, amount }));
+    estimate.kitLines.forEach((kit) => {
+        lines.push({ label: `${kit.label} × ${kit.qty}`, amount: kit.amount });
+    });
+    lines.push({ label: "Safety factor, 10%", amount: estimate.safetyAmount });
+    lines.push({ label: "Profit, 50%", amount: estimate.profitAmount });
+    return lines;
 }
 
 function shipmentGrams(state) {
-    const color = state.rates.colors[state.color] || {};
+    const color = (state.rates.colors && state.rates.colors[state.color]) || {};
     const perSquare = finite(color.grams_per_square);
     if (perSquare == null) return null;
     let grams = state.squares.size * perSquare + (finite(state.rates.packaging_grams) || 0);
-    if (state.kits > 0) {
-        const kitGrams = finite(state.rates.kit && state.rates.kit.grams);
-        if (kitGrams == null) return null;
-        grams += state.kits * kitGrams;
+    const kits = state.rates.kits || [];
+    for (let index = 0; index < kits.length; index += 1) {
+        const kit = kits[index];
+        const qty = Math.max(0, Math.floor(finite(state.kitQty && state.kitQty[kit.id]) || 0));
+        if (!qty) continue;
+        const kitGrams = (kit.materials || []).reduce((sum, item) => sum + (finite(item.grams) || 0), 0);
+        if (!kitGrams) return null;
+        grams += qty * kitGrams;
     }
     return grams;
 }
@@ -590,14 +688,13 @@ function shippingCost(state, grams) {
 }
 
 function deliveryDays(state) {
-    const color = state.rates.colors[state.color] || {};
-    const printers = finite(state.rates.printers);
-    const daysEach = finite(color.days_per_square);
-    const assembly = finite(state.rates.assembly_days);
-    const printDays = printers && daysEach != null ? Math.ceil(state.squares.size / printers) * daysEach : null;
+    const estimate = printEstimate(state);
+    const assembly = state.rates ? finite(state.rates.assembly_days) : null;
     const row = shippingRow(state);
     return {
-        printDays,
+        printDays: estimate.ready ? Math.ceil(estimate.hours / 24) : null,
+        printHours: estimate.ready ? estimate.hours : null,
+        activeDays: estimate.ready ? estimate.activeDays : null,
         assemblyDays: assembly,
         transitMin: row ? finite(row.transit_days_min) : null,
         transitMax: row ? finite(row.transit_days_max) : null,
@@ -661,7 +758,14 @@ function orderPayload(state) {
         scale_m: state.fit ? state.fit.metersPerInch * 24 : state.scale,
         squares: [...state.squares].map(parseSquare),
         color: state.color,
-        kits: state.kits,
+        print_material: state.material || null,
+        print_grade: state.grade || null,
+        kits: (state.rates && state.rates.kits || []).map((kit) => ({
+            id: kit.id,
+            label: kit.label,
+            qty: Math.max(0, Math.floor(finite(state.kitQty && state.kitQty[kit.id]) || 0)),
+            unit_price: kitUnitPrice(kit),
+        })),
         destination: {
             country: state.country,
             region: state.region,
@@ -827,7 +931,9 @@ function bootWatershedPage() {
         reliefImage: null,
         elevLoading: null,
         elevAbort: null,
-        kits: 0,
+        material: "pla",
+        grade: "standard",
+        kitQty: {},
         country: "US",
         region: "",
         postal: "",
@@ -868,9 +974,11 @@ function bootWatershedPage() {
         state.rampBook = rampBook;
         state.ramp = rampBook.default || "cd-a";
         document.getElementById("intro").textContent = rates.intro;
-        document.getElementById("kit-note").textContent = (rates.kit && rates.kit.description) || "";
+        document.getElementById("kit-note").textContent = rates.kits_intro || "";
         buildColorButtons();
         buildRampSelect();
+        buildPrintControls();
+        buildKitControls();
         const response = await fetch(assetPath(rates.boundaries_url));
         const collection = response.ok ? await response.json() : { features: [] };
         state.boundaries = (collection.features || []).filter((feature) => feature.geometry
@@ -924,10 +1032,6 @@ function bootWatershedPage() {
         state.reliefImage = null;
         render();
     });
-    document.getElementById("kits").addEventListener("input", (event) => {
-        state.kits = Math.max(0, Math.floor(finite(event.target.value) || 0));
-        render();
-    });
     ["country", "region", "postal", "city", "street", "recipient"].forEach((id) => {
         document.getElementById(id).addEventListener("input", (event) => {
             state[id === "recipient" ? "recipient" : id] = event.target.value;
@@ -936,6 +1040,78 @@ function bootWatershedPage() {
     });
     document.getElementById("model-form").addEventListener("submit", (event) => event.preventDefault());
     document.getElementById("save-quote").addEventListener("click", saveQuote);
+
+    function moneyText(amount) {
+        return Number(amount).toLocaleString("en-US", { style: "currency", currency: "USD" });
+    }
+
+    function buildPrintControls() {
+        const spec = (state.rates && state.rates.print) || {};
+        const materialSelect = document.getElementById("print-material");
+        const gradeSelect = document.getElementById("print-grade");
+        const materials = spec.materials || {};
+        const grades = spec.grades || {};
+        materialSelect.innerHTML = Object.entries(materials).map(([id, item]) => (
+            `<option value="${escapeHtml(id)}">${escapeHtml(item.label)} · ${moneyText(item.usd_per_kg)}/kg</option>`
+        )).join("");
+        gradeSelect.innerHTML = Object.entries(grades).map(([id, item]) => (
+            `<option value="${escapeHtml(id)}">${escapeHtml(item.label)} · ${Number(item.layer_mm).toFixed(2)} mm</option>`
+        )).join("");
+        state.material = materials.pla ? "pla" : (Object.keys(materials)[0] || "");
+        state.grade = grades.standard ? "standard" : (Object.keys(grades)[0] || "");
+        materialSelect.value = state.material;
+        gradeSelect.value = state.grade;
+        materialSelect.addEventListener("change", (event) => {
+            state.material = event.target.value;
+            render();
+        });
+        gradeSelect.addEventListener("change", (event) => {
+            state.grade = event.target.value;
+            render();
+        });
+    }
+
+    function buildKitControls() {
+        const host = document.getElementById("kit-choices");
+        const kits = (state.rates && state.rates.kits) || [];
+        host.innerHTML = kits.map((kit) => {
+            const lines = (kit.materials || []).map((item) => (
+                `<li>${escapeHtml(item.name)} · ${moneyText(item.price)}</li>`
+            )).join("");
+            const options = Array.from({ length: 21 }, (_, count) => `<option value="${count}">${count}</option>`).join("");
+            return `<div class="kit-block">
+                <h3>${escapeHtml(kit.label)}</h3>
+                <ul class="kit-lines">${lines}</ul>
+                <p class="kit-price">${moneyText(kitUnitPrice(kit))} each</p>
+                <label for="kit-${escapeHtml(kit.id)}">Quantity</label>
+                <select id="kit-${escapeHtml(kit.id)}" data-kit="${escapeHtml(kit.id)}">${options}</select>
+            </div>`;
+        }).join("");
+        host.querySelectorAll("select[data-kit]").forEach((select) => {
+            state.kitQty[select.dataset.kit] = 0;
+            select.addEventListener("change", () => {
+                state.kitQty[select.dataset.kit] = Math.max(0, Math.floor(finite(select.value) || 0));
+                render();
+            });
+        });
+    }
+
+    function renderPrintNote(estimate) {
+        const note = document.getElementById("print-note");
+        const spec = state.rates && state.rates.print;
+        const basis = (spec && spec.basis) || "";
+        if (!estimate.ready) {
+            note.textContent = basis
+                ? `The print estimate appears after the elevation loads. ${basis}`
+                : "The print estimate appears after the elevation loads.";
+            return;
+        }
+        const perKg = moneyText(estimate.material.usd_per_kg);
+        const each = estimate.squares ? estimate.kg / estimate.squares : estimate.kg;
+        const machineRate = spec.printer_life_hours > 0 ? spec.printer_cost / spec.printer_life_hours : null;
+        const rateText = machineRate == null ? "" : ` The machine rate is ${moneyText(machineRate)} per hour.`;
+        note.textContent = `${estimate.material.label} is ${perKg}/kg. ${estimate.squares} squares use ${estimate.kg.toFixed(2)} kg at 15% infill (${each.toFixed(2)} kg each) at a mean height of ${estimate.heightIn.toFixed(2)} in. Print time is about ${estimate.hours.toFixed(1)} h. ${basis}${rateText} The 180 print days are the shop year and do not change that hourly rate. Height changes material and print time. Labor stays one hour per 24 in square. Shipping is not in the total.`;
+    }
 
     function setMode(mode) {
         state.method = mode;
@@ -1251,7 +1427,10 @@ function bootWatershedPage() {
     }
 
     function renderQuote() {
-        const payload = orderPayload(readForm());
+        const form = readForm();
+        const estimate = printEstimate(form);
+        renderPrintNote(estimate);
+        const payload = orderPayload(form);
         const money = (amount) => amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
         const rows = payload.lines.map((line) => `<div><span>${escapeHtml(line.label)}</span><span class="${line.amount == null ? "missing" : ""}">${line.amount == null ? "Rate not set" : money(line.amount)}</span></div>`).join("");
         const total = payload.total == null
@@ -1260,11 +1439,16 @@ function bootWatershedPage() {
         document.getElementById("quote").innerHTML = rows + total;
         const days = payload.delivery;
         const parts = [];
-        parts.push(days.printDays == null ? "Print time needs printers and days per square." : `Print time about ${days.printDays} day${days.printDays === 1 ? "" : "s"}, before the shop queue.`);
+        if (days.printHours == null) parts.push("Print time appears after the elevation loads.");
+        else {
+            const dayWord = days.printDays === 1 ? "day" : "days";
+            const shop = days.activeDays == null ? "" : ` The shop schedules ${days.activeDays} print days a year.`;
+            parts.push(`Print time about ${days.printHours.toFixed(1)} h, about ${days.printDays} ${dayWord} if one printer runs 24 hours.${shop}`);
+        }
         parts.push(days.assemblyDays == null ? "Assembly time is not set." : `Assembly is ${days.assemblyDays} day${days.assemblyDays === 1 ? "" : "s"}.`);
-        if (days.transitMin == null) parts.push("Transit for this country is not set.");
-        else if (days.transitMax != null && days.transitMax !== days.transitMin) parts.push(`Transit about ${days.transitMin}–${days.transitMax} days after the model leaves Ames.`);
-        else parts.push(`Transit about ${days.transitMin} days after the model leaves Ames.`);
+        if (days.transitMin == null) parts.push("Transit for this country is not set. Shipping is not included in the total.");
+        else if (days.transitMax != null && days.transitMax !== days.transitMin) parts.push(`Transit about ${days.transitMin}–${days.transitMax} days after the model leaves Ames. Shipping is not included in the total.`);
+        else parts.push(`Transit about ${days.transitMin} days after the model leaves Ames. Shipping is not included in the total.`);
         document.getElementById("eta").textContent = parts.join(" ");
         if (map) document.getElementById("map-note").textContent = mapCaption();
     }
@@ -1308,7 +1492,9 @@ function bootWatershedPage() {
             vertical: state.vertical,
             elevGrid: state.elevGrid,
             printCrs: state.printCrs,
-            kits: state.kits,
+            material: state.material,
+            grade: state.grade,
+            kitQty: state.kitQty,
             country: document.getElementById("country").value,
             region: document.getElementById("region").value,
             postal: document.getElementById("postal").value,
@@ -1438,6 +1624,7 @@ function bootWatershedPage() {
 
     window.SWCCWatershed = {
         orderPayload: () => orderPayload(readForm()),
+        estimate: () => printEstimate(readForm()),
         rampColor: (elev) => {
             const ramp = activeRamp();
             return ramp ? reliefColor(elev, ramp.stops) : null;

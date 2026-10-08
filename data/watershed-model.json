@@ -7,14 +7,111 @@
   "printers": null,
   "assembly_days": null,
   "assembly_hours": null,
-  "wage_per_hour": null,
+  "wage_per_hour": 16,
   "machine_rate_per_hour": null,
   "packaging_grams": null,
-  "kit": {
-    "description": "Accessory kit. Contents and price are not recorded yet.",
-    "price": null,
-    "grams": null
+  "print": {
+    "infill": 0.15,
+    "square_in": 24,
+    "labor_hours_per_tile": 1,
+    "wage_per_hour": 16,
+    "printer_cost": 6000,
+    "printer_life_hours": 10000,
+    "active_print_days": 180,
+    "failure_rate": 0.1,
+    "energy_per_kwh": 0.12,
+    "power_w": 500,
+    "safety_factor": 0.1,
+    "profit": 0.5,
+    "basis": "PLA is $20.74/kg (8,176 listings), PET is $18.69/kg from the PETG average (3,077 listings), and ASA is $21.86/kg (334 listings), all on 8 October 2026. Printable PET is sold as PETG. Draft, standard, and fine use 15, 10, and 6 mm³/s. Infill stays 15%. The printer is $6,000 over 10,000 hours, on 180 print days a year. Failed prints are 10%. Power is 500 W at 12 cents per kWh. Labor is $16 an hour, one hour for each 24 in square. A 10% safety factor is added, then 50% profit.",
+    "materials": {
+      "pla": {
+        "label": "PLA",
+        "usd_per_kg": 20.74,
+        "density_g_cm3": 1.24
+      },
+      "pet": {
+        "label": "PET",
+        "usd_per_kg": 18.69,
+        "density_g_cm3": 1.27
+      },
+      "asa": {
+        "label": "ASA",
+        "usd_per_kg": 21.86,
+        "density_g_cm3": 1.07
+      }
+    },
+    "grades": {
+      "draft": {
+        "label": "Draft",
+        "layer_mm": 0.28,
+        "flow_mm3_s": 15
+      },
+      "standard": {
+        "label": "Standard",
+        "layer_mm": 0.2,
+        "flow_mm3_s": 10
+      },
+      "fine": {
+        "label": "Fine",
+        "layer_mm": 0.12,
+        "flow_mm3_s": 6
+      }
+    }
   },
+  "kits_intro": "Add any number of each kit. The kit price is the sum of its materials.",
+  "kits": [
+    {
+      "id": "practice",
+      "label": "Practice kit",
+      "materials": [
+        {
+          "name": "Clay putty, 1 lb, for dams",
+          "price": 6
+        },
+        {
+          "name": "Thin fabric, 1 yard, for filter strips",
+          "price": 4
+        },
+        {
+          "name": "Rough sprinkle, 1 lb, for surface roughness",
+          "price": 3
+        }
+      ]
+    },
+    {
+      "id": "contaminant",
+      "label": "Contaminant kit",
+      "materials": [
+        {
+          "name": "Spray bottles, pack of 2",
+          "price": 5
+        },
+        {
+          "name": "Soluble tracer, 1 bottle",
+          "price": 6
+        },
+        {
+          "name": "Particulate simulant, 4 oz",
+          "price": 4
+        }
+      ]
+    },
+    {
+      "id": "display",
+      "label": "Display kit",
+      "materials": [
+        {
+          "name": "Markers, set of 8",
+          "price": 7
+        },
+        {
+          "name": "Label flags, pack of 20",
+          "price": 5
+        }
+      ]
+    }
+  ],
   "colors": {
     "white": {
       "label": "Solid white",

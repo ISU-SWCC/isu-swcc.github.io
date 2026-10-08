@@ -93,17 +93,27 @@
                     </div>
                 </section>
 
-                <section class="fold" id="fold-kits">
-                    <h2><button type="button" aria-expanded="false"><span>06</span> Accessory kits<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                <section class="fold is-open" id="fold-print">
+                    <h2><button type="button" aria-expanded="true"><span>06</span> Print<i class="fold-mark" aria-hidden="true">−</i></button></h2>
                     <div class="fold-body">
-                        <label for="kits">Quantity</label>
-                        <input id="kits" type="number" min="0" step="1" value="0">
+                        <label for="print-material">Print material</label>
+                        <select id="print-material"></select>
+                        <label for="print-grade">Quality grade</label>
+                        <select id="print-grade"></select>
+                        <p class="field-note" id="print-note"></p>
+                    </div>
+                </section>
+
+                <section class="fold is-open" id="fold-kits">
+                    <h2><button type="button" aria-expanded="true"><span>07</span> Accessory kits<i class="fold-mark" aria-hidden="true">−</i></button></h2>
+                    <div class="fold-body">
+                        <div id="kit-choices"></div>
                         <p class="field-note" id="kit-note"></p>
                     </div>
                 </section>
 
                 <section class="fold" id="fold-delivery">
-                    <h2><button type="button" aria-expanded="false"><span>07</span> Delivery<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                    <h2><button type="button" aria-expanded="false"><span>08</span> Delivery<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
                         <label for="country">Country</label>
                         <input id="country" type="text" value="US" autocomplete="country">
@@ -120,8 +130,8 @@
                     </div>
                 </section>
 
-                <section class="fold" id="fold-quote">
-                    <h2><button type="button" aria-expanded="false"><span>08</span> Quote<i class="fold-mark" aria-hidden="true">+</i></button></h2>
+                <section class="fold is-open" id="fold-quote">
+                    <h2><button type="button" aria-expanded="true"><span>09</span> Quote<i class="fold-mark" aria-hidden="true">−</i></button></h2>
                     <div class="fold-body">
                         <div class="quote" id="quote"></div>
                         <p class="field-note" id="eta"></p>
@@ -136,7 +146,7 @@
     </main>
     <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20261008e"></script>
+    <script src="../assets/js/watershed-model.js?v=20261008f"></script>
 </body>
 
 </html>

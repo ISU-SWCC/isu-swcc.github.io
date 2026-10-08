@@ -74,6 +74,28 @@ body {
     overflow-wrap: break-word;
 }
 
+.kit-block {
+    margin-top: 16px;
+}
+
+.kit-block h3 {
+    margin: 0;
+    font-size: 15px;
+}
+
+.kit-lines {
+    margin: 6px 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.kit-price {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+}
+
 .fold {
     border-bottom: 1px solid #e6e6e8;
 }
