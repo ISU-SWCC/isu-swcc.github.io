@@ -1,5 +1,5 @@
-sha: 1cb31e348a1f5f19d698652339963b8328f836ab
+sha: f59db309452aeb4a232d7a59219fe7b840338096
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-08
-note: This commit explains the print materials and gives kit quantity a number field. The vault folder is the working copy. Publish again the same way when the live site should change.
+note: This commit publishes USGS watershed search. The outlines and the Copernicus overview are on the site. The vault folder is the working copy. Publish again the same way when the live site should change.
