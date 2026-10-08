@@ -1,5 +1,5 @@
-sha: e64eb9cbbdc61b0e2129bb65dace804d38f562cd
+sha: edda93b871be5df25f506fc3bb98f5ff6a27d9bf
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-08
-note: This commit adds DEM Resolution above the color ramp. The vault folder is the working copy. Publish again the same way when the live site should change.
+note: This commit publishes the 500 m, 1 km, and 2 km elevation grids for US watersheds. The vault folder is the working copy. Publish again the same way when the live site should change.
