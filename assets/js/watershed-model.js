@@ -1465,7 +1465,7 @@ function mapStyle(color, rampId) {
             sources: {
                 overview: {
                     type: "raster",
-                    tiles: [assetPath(`data/map/${rampId || "cd-a"}/{z}/{x}/{y}.png`)],
+                    tiles: [assetPath(`data/map/${rampId || "cd-a"}/{z}/{x}/{y}.png?v=20261008e`)],
                     tileSize: 256,
                     maxzoom: 4,
                     attribution: "Copernicus DEM GLO-30",
