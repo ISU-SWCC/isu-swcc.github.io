@@ -1295,39 +1295,27 @@ function bootWatershedPage() {
             const lines = (kit.materials || []).map((item) => (
                 `<li>${escapeHtml(item.name)} · ${moneyText(item.price)}</li>`
             )).join("");
-            const options = Array.from({ length: 21 }, (_, count) => `<option value="${count}">${count}</option>`).join("");
             return `<div class="kit-block">
                 <h3>${escapeHtml(kit.label)}</h3>
                 <ul class="kit-lines">${lines}</ul>
                 <p class="kit-price">${moneyText(kitUnitPrice(kit))} each</p>
                 <label for="kit-${escapeHtml(kit.id)}">Quantity</label>
-                <select id="kit-${escapeHtml(kit.id)}" data-kit="${escapeHtml(kit.id)}">${options}</select>
+                <input id="kit-${escapeHtml(kit.id)}" data-kit="${escapeHtml(kit.id)}" type="number" min="0" max="20" step="1" value="0">
             </div>`;
         }).join("");
-        host.querySelectorAll("select[data-kit]").forEach((select) => {
-            state.kitQty[select.dataset.kit] = 0;
-            select.addEventListener("change", () => {
-                state.kitQty[select.dataset.kit] = Math.max(0, Math.floor(finite(select.value) || 0));
+        host.querySelectorAll("input[data-kit]").forEach((input) => {
+            state.kitQty[input.dataset.kit] = 0;
+            const apply = () => {
+                const next = Math.floor(finite(input.value) || 0);
+                state.kitQty[input.dataset.kit] = Math.max(0, Math.min(20, next));
                 render();
+            };
+            input.addEventListener("input", apply);
+            input.addEventListener("change", () => {
+                apply();
+                input.value = String(state.kitQty[input.dataset.kit]);
             });
         });
-    }
-
-    function renderPrintNote(estimate) {
-        const note = document.getElementById("print-note");
-        const spec = state.rates && state.rates.print;
-        const basis = (spec && spec.basis) || "";
-        if (!estimate.ready) {
-            note.textContent = basis
-                ? `The print estimate appears after the elevation loads. ${basis}`
-                : "The print estimate appears after the elevation loads.";
-            return;
-        }
-        const perKg = moneyText(estimate.material.usd_per_kg);
-        const each = estimate.squares ? estimate.kg / estimate.squares : estimate.kg;
-        const machineRate = spec.printer_life_hours > 0 ? spec.printer_cost / spec.printer_life_hours : null;
-        const rateText = machineRate == null ? "" : ` The machine rate is ${moneyText(machineRate)} per hour.`;
-        note.textContent = `${estimate.material.label} is ${perKg}/kg. ${estimate.squares} squares use ${estimate.kg.toFixed(2)} kg at 15% infill (${each.toFixed(2)} kg each) at a mean height of ${estimate.heightIn.toFixed(2)} in. Print time is about ${estimate.hours.toFixed(1)} h. The stacked box is 24 by 24 by ${estimate.boxHeightIn.toFixed(1)} in. ${basis}${rateText} The 180 print days are the shop year and do not change that hourly rate. Height changes material and print time. Labor stays one hour per 24 in square.`;
     }
 
     function setMode(mode) {
@@ -1652,7 +1640,6 @@ function bootWatershedPage() {
     function renderQuote() {
         const form = readForm();
         const estimate = printEstimate(form);
-        renderPrintNote(estimate);
         const payload = orderPayload(form);
         const money = (amount) => amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
         const rows = payload.lines.map((line) => `<div><span>${escapeHtml(line.label)}</span><span class="${line.amount == null ? "missing" : ""}">${line.amount == null ? "Rate not set" : money(line.amount)}</span></div>`).join("");

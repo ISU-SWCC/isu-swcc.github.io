@@ -168,6 +168,11 @@ body {
     border-radius: 8px;
 }
 
+.controls input + .choices,
+.controls select + .choices {
+    margin-top: 12px;
+}
+
 .controls select:disabled {
     opacity: 0.55;
 }

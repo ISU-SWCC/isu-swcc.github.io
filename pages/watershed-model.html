@@ -7,7 +7,7 @@
     <title>Watershed Flow Model — Soil and Water Conservation Club</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
     <link href="../assets/vendor/maplibre-gl/maplibre-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="../styles/watershed-model.css">
+    <link rel="stylesheet" href="../styles/watershed-model.css?v=20261008h">
 </head>
 
 <body>
@@ -98,9 +98,10 @@
                     <div class="fold-body">
                         <label for="print-material">Print Material</label>
                         <select id="print-material"></select>
+                        <p class="field-note" id="material-note">PLA is the default indoor plastic. PET is tougher and takes more heat. ASA is the hearty outdoor plastic. Bulk is the cheaper filament. Enterprise is the higher-quality filament.</p>
                         <label for="print-grade">Quality Grade</label>
                         <select id="print-grade"></select>
-                        <p class="field-note" id="print-note"></p>
+                        <p class="field-note" id="grade-note">Draft is faster and coarser. Standard is the usual finish. Fine is slower and smoother.</p>
                     </div>
                 </section>
 
@@ -146,7 +147,7 @@
     </main>
     <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20261008g"></script>
+    <script src="../assets/js/watershed-model.js?v=20261008h"></script>
 </body>
 
 </html>
