@@ -25,6 +25,7 @@ const HUC_LABEL = {
     10: "HUC10", 12: "HUC12", 14: "HUC14", 16: "HUC16",
 };
 const DEM_RESOLUTIONS = [30, 90, 250, 500, 1000, 2000, 5000];
+const COARSE_RESOLUTIONS = [500, 1000, 2000];
 const DEM_CELL_MIN = 100000;
 const DEM_CELL_MAX = 1000000;
 
@@ -1115,6 +1116,152 @@ function decodeElevationValues(payload) {
     return values;
 }
 
+let demBookPromise = null;
+const demTileCache = new Map();
+
+function loadDemBook() {
+    if (!demBookPromise) {
+        demBookPromise = loadJSON(assetPath("data/dem/index.json")).catch((error) => {
+            demBookPromise = null;
+            throw error;
+        });
+    }
+    return demBookPromise;
+}
+
+async function demTile(url, signal) {
+    if (demTileCache.has(url)) return demTileCache.get(url);
+    const response = await fetch(url, { signal });
+    if (response.status === 404) {
+        demTileCache.set(url, null);
+        return null;
+    }
+    if (!response.ok) throw new Error(String(response.status));
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(bitmap, 0, 0);
+    const pixels = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    bitmap.close();
+    demTileCache.set(url, pixels);
+    return pixels;
+}
+
+function maskRaster(geometry, west, north, cell, width, height) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.beginPath();
+    const polygons = geometry.type === "MultiPolygon" ? geometry.coordinates : [geometry.coordinates];
+    polygons.forEach((rings) => {
+        rings.forEach((ring) => {
+            ring.forEach((coord, index) => {
+                const x = (coord[0] - west) / cell;
+                const y = (north - coord[1]) / cell;
+                if (index === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.closePath();
+        });
+    });
+    ctx.fillStyle = "#fff";
+    ctx.fill("evenodd");
+    return ctx.getImageData(0, 0, width, height).data;
+}
+
+async function sampleCoarse(feature, resolution, signal) {
+    const id = feature.properties && feature.properties.id;
+    const book = await loadDemBook();
+    const spec = book && book.grids && book.grids[String(resolution)];
+    if (!id || !spec) throw new Error("no coarse grid");
+    const bounds = featureBbox(feature);
+    const cell = spec.cell_deg;
+    let col0 = Math.floor((bounds[0] - spec.west) / cell);
+    let col1 = Math.ceil((bounds[2] - spec.west) / cell);
+    let row0 = Math.floor((spec.north - bounds[3]) / cell);
+    let row1 = Math.ceil((spec.north - bounds[1]) / cell);
+    col0 = Math.max(0, Math.min(spec.cols, col0));
+    col1 = Math.max(0, Math.min(spec.cols, col1));
+    row0 = Math.max(0, Math.min(spec.rows, row0));
+    row1 = Math.max(0, Math.min(spec.rows, row1));
+    const width = col1 - col0;
+    const height = row1 - row0;
+    if (width < 2 || height < 2 || width * height > 4000000) throw new Error("grid size");
+    const tile = book.tile || 256;
+    const tiles = new Map();
+    const jobs = [];
+    for (let ty = Math.floor(row0 / tile); ty <= Math.floor((row1 - 1) / tile); ty += 1) {
+        for (let tx = Math.floor(col0 / tile); tx <= Math.floor((col1 - 1) / tile); tx += 1) {
+            jobs.push([tx, ty]);
+        }
+    }
+    let cursor = 0;
+    const worker = async () => {
+        while (cursor < jobs.length) {
+            const index = cursor;
+            cursor += 1;
+            const [tx, ty] = jobs[index];
+            const pixels = await demTile(assetPath(`data/dem/${resolution}/${tx}/${ty}.png`), signal);
+            tiles.set(`${tx}/${ty}`, pixels);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, jobs.length) }, worker));
+    const west = spec.west + col0 * cell;
+    const north = spec.north - row0 * cell;
+    const mask = maskRaster(feature.geometry, west, north, cell, width, height);
+    const values = new Array(width * height);
+    let min = Infinity;
+    let max = -Infinity;
+    let count = 0;
+    const sample = (localCol, imageRow) => {
+        const col = col0 + localCol;
+        const row = row0 + imageRow;
+        const pixels = tiles.get(`${Math.floor(col / tile)}/${Math.floor(row / tile)}`);
+        if (!pixels) return 0;
+        const px = col - Math.floor(col / tile) * tile;
+        const py = row - Math.floor(row / tile) * tile;
+        const stored = pixels[(py * tile + px) * 4] * 256 + pixels[(py * tile + px) * 4 + 1];
+        if (stored === book.nodata) return null;
+        return stored - book.offset;
+    };
+    for (let imageRow = 0; imageRow < height; imageRow += 1) {
+        const outRow = height - 1 - imageRow;
+        for (let col = 0; col < width; col += 1) {
+            const inside = mask[(imageRow * width + col) * 4 + 3] >= 128;
+            let elev = null;
+            if (inside) {
+                elev = sample(col, imageRow);
+                if (elev != null) {
+                    if (elev < min) min = elev;
+                    if (elev > max) max = elev;
+                    count += 1;
+                }
+            }
+            values[outRow * width + col] = elev;
+        }
+    }
+    if (!count) throw new Error("empty grid");
+    return {
+        n: width,
+        rows: height,
+        cols: width,
+        values,
+        box: [west, spec.north - row1 * cell, spec.west + col1 * cell, north],
+        min,
+        max,
+        key: id,
+        crs: null,
+        resolution_m: resolution,
+        outline_m: null,
+        attribution: book.attribution,
+        streams: null,
+    };
+}
+
 async function sampleElevations(feature, signal) {
     const id = feature.properties && feature.properties.id;
     if (!id) throw new Error("no id");
@@ -1732,6 +1879,13 @@ function bootWatershedPage() {
         if (cells > 4000000) {
             text += " A bake above 4,000,000 cells uses a coarser grid.";
         }
+        const exampleThirty = state.resolution === 30
+            && state.feature
+            && state.feature.properties
+            && state.feature.properties.id === "example-basin";
+        if (!COARSE_RESOLUTIONS.includes(state.resolution) && !exampleThirty) {
+            text += " The 500 m, 1 km, and 2 km grids are on the site.";
+        }
         note.textContent = text;
     }
 
@@ -1762,7 +1916,7 @@ function bootWatershedPage() {
     function render() {
         if (!state.rates) return;
         const id = state.feature && state.feature.properties && state.feature.properties.id;
-        if (state.elevGrid && state.elevGrid.key !== id) {
+        if (state.elevGrid && (state.elevGrid.key !== id || state.elevGrid.resolution_m !== state.resolution)) {
             state.elevGrid = null;
             state.reliefImage = null;
         }
@@ -1844,14 +1998,9 @@ function bootWatershedPage() {
         const limited = applied + 0.001 < state.exaggeration
             ? ` The requested ${state.exaggeration} is above the cap, so ${applied.toFixed(1)} is used.`
             : "";
-        const published = grid.resolution_m && state.printCrs && sameCrs(state.printCrs, grid.crs) ? grid.resolution_m : null;
         let print = "";
-        if (state.printCrs) {
-            if (published && published !== state.resolution) {
-                print = ` Print grid: ${state.printCrs.label}, ${resolutionLabel(state.resolution)}. The preview sample is ${resolutionLabel(published)}.`;
-            } else {
-                print = ` Print grid: ${state.printCrs.label}${published ? `, ${resolutionLabel(published)}` : ""}.`;
-            }
+        if (state.printCrs && grid.resolution_m) {
+            print = ` Print grid: ${state.printCrs.label}, ${resolutionLabel(grid.resolution_m)}.`;
         }
         note.textContent = `Elevation spans ${Math.round(grid.min).toLocaleString("en-US")}–${Math.round(grid.max).toLocaleString("en-US")} m. Applied exaggeration is ${applied.toFixed(1)} (maximum ${limit.toFixed(1)}). The base is 0.5 in and the highest point is ${peak.totalIn.toFixed(2)} in.${limited}${print}`;
     }
@@ -1867,7 +2016,9 @@ function bootWatershedPage() {
             return;
         }
         const ramp = activeRamp();
-        if (state.elevGrid && state.elevGrid.key === id) {
+        const resolution = state.resolution;
+        const loadKey = `${id}@${resolution}`;
+        if (state.elevGrid && state.elevGrid.key === id && state.elevGrid.resolution_m === resolution) {
             const applied = state.vertical ? state.vertical.applied : state.exaggeration;
             const stale = !ramp
                 || !state.reliefImage
@@ -1877,15 +2028,19 @@ function bootWatershedPage() {
             else if (stale) state.reliefImage = paintRelief(state.elevGrid, applied, ramp.stops, ramp.id);
             return;
         }
-        if (state.elevLoading === id) return;
+        if (state.elevLoading === loadKey) return;
         if (state.elevAbort) state.elevAbort.abort();
         const controller = new AbortController();
         state.elevAbort = controller;
-        state.elevLoading = id;
+        state.elevLoading = loadKey;
         state.elevMiss = null;
-        sampleElevations(state.feature, controller.signal).then((grid) => {
+        const loader = COARSE_RESOLUTIONS.includes(resolution)
+            ? sampleCoarse(state.feature, resolution, controller.signal)
+            : sampleElevations(state.feature, controller.signal);
+        loader.then((grid) => {
             if (controller.signal.aborted) return;
             if (!state.feature || !(state.feature.properties && state.feature.properties.id === id)) return;
+            if (state.resolution !== resolution) return;
             state.elevGrid = grid;
             state.elevLoading = null;
             state.elevMiss = null;
@@ -1950,13 +2105,8 @@ function bootWatershedPage() {
         const grid = state.elevGrid;
         if (grid && grid.key === id) {
             if (grid.attribution) text += ` ${grid.attribution}.`;
-            if (state.printCrs) {
-                const published = grid.resolution_m && sameCrs(state.printCrs, grid.crs) ? grid.resolution_m : null;
-                if (published && published !== state.resolution) {
-                    text += ` Print grid: ${state.printCrs.label}, ${resolutionLabel(state.resolution)}. The preview sample is ${resolutionLabel(published)}.`;
-                } else {
-                    text += ` Print grid: ${state.printCrs.label}${published ? `, ${resolutionLabel(published)}` : ""}.`;
-                }
+            if (state.printCrs && grid.resolution_m) {
+                text += ` Print grid: ${state.printCrs.label}, ${resolutionLabel(grid.resolution_m)}.`;
             }
         }
         if (state.color === "white" || state.color === "dem") {
