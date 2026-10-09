@@ -1270,7 +1270,10 @@ async function sampleTiled(feature, resolution, signal, book, urlFor, maskMode) 
     row1 = Math.max(0, Math.min(spec.rows, row1));
     const width = col1 - col0;
     const height = row1 - row0;
-    if (width < 2 || height < 2 || width * height > 4000000) throw new Error("grid size");
+    // 4,000,000 counts cells inside the basin, after the mask below.
+    // The sample rectangle is larger. South Skunk at 90 m is about
+    // 589,000 basin cells and 4,049,656 rectangle cells.
+    if (width < 2 || height < 2 || width * height > 8000000) throw new Error("grid size");
     const tile = book.tile || 256;
     const tiles = new Map();
     const jobs = [];
@@ -1329,6 +1332,7 @@ async function sampleTiled(feature, resolution, signal, book, urlFor, maskMode) 
         }
     }
     if (!count) throw new Error("empty grid");
+    if (count > 4000000) throw new Error("grid size");
     return {
         n: width,
         rows: height,
@@ -2518,7 +2522,11 @@ function bootWatershedPage() {
             state.elevGrid = null;
             state.reliefImage = null;
             state.elevMiss = id;
-            if (note) note.textContent = missingGridText();
+            if (note) {
+                note.textContent = error && error.message === "grid size"
+                    ? `This basin is above 4,000,000 cells at ${resolutionLabel(resolution)}, so that print grid stays unloaded. The map still shows the 5 km DEM overview.`
+                    : missingGridText();
+            }
         });
     }
 
