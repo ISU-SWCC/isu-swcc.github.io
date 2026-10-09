@@ -1,5 +1,5 @@
-sha: 40e6f97a616a6b433b675a947c549cd77851eab8
+sha: def7122c5d11ce0769b797e4f74c1394e3e3ad9f
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-09
-note: This commit opens the watershed page on Walnut Creek, HUC 0708020806, over USGS topo, and publishes that basin at 30 m, 90 m, and 250 m. Other basins read 30 m, 90 m, and 250 m from the campus tile host. The vault folder is the working copy.
+note: The watershed page opens on Walnut Creek, HUC 0708020806, over USGS topo. That basin is published at 30 m, 90 m, and 250 m. Other basins read those resolutions from the campus tile host. A sample rectangle may reach 8,000,000 cells. A basin above 4,000,000 cells inside the outline stays unloaded. The vault folder is the working copy.
