@@ -1,5 +1,5 @@
-sha: 022964c039b68938d3555e8d6e511a9b4bc3083d
+sha: 40e6f97a616a6b433b675a947c549cd77851eab8
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
-published: 2026-10-08
-note: This commit publishes the current officer roster and restyles the officer page to match Products. The vault folder is the working copy. Publish again the same way when the live site should change.
+published: 2026-10-09
+note: This commit opens the watershed page on Walnut Creek, HUC 0708020806, over USGS topo, and publishes that basin at 30 m, 90 m, and 250 m. Other basins read 30 m, 90 m, and 250 m from the campus tile host. The vault folder is the working copy.
