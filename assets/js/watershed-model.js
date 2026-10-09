@@ -1366,6 +1366,24 @@ const FINE_TILE_BASES = new Set([
     "http://el4352-ws.iastate.edu:8080/fine",
     "http://10.27.15.160:8080/fine",
 ]);
+const HOSTED_TILE_BASE = "https://raw.githubusercontent.com/ISU-SWCC/isu-swcc.github.io/dem-tiles";
+const HOSTED_RESOLUTIONS = [250];
+
+function hostedTileUrl(resolution, tx, ty) {
+    return `${HOSTED_TILE_BASE}/${resolution}/${tx}/${ty}.png`;
+}
+
+async function sampleHosted(feature, resolution, signal) {
+    const book = await loadDemBook();
+    return sampleTiled(
+        feature,
+        resolution,
+        signal,
+        book,
+        (tx, ty) => hostedTileUrl(resolution, tx, ty),
+        "ocean",
+    );
+}
 
 async function sampleFine(feature, resolution, signal) {
     const book = await loadFineBook();
@@ -2338,14 +2356,18 @@ function bootWatershedPage() {
             state.feature && state.feature.properties && state.feature.properties.id,
             state.resolution,
         ));
+        const onPublic = location.protocol === "https:";
         const fineGrids = fineBook && fineBook.grids;
-        const fineOn = Boolean(fineGrids && fineGrids["30"] && fineGrids["90"] && fineGrids["250"]);
+        const fineOn = !onPublic && Boolean(fineGrids && fineGrids["30"] && fineGrids["90"] && fineGrids["250"]);
+        const hostedHere = onPublic && HOSTED_RESOLUTIONS.includes(state.resolution);
+        const available = onPublic
+            ? [...HOSTED_RESOLUTIONS, ...COARSE_RESOLUTIONS]
+            : [...FINE_RESOLUTIONS, ...COARSE_RESOLUTIONS];
+        const availableText = ` The ${available.map(resolutionLabel).join(", ")} grids are on this site.`;
         if (state.resolution === 5000) {
-            text += fineOn
-                ? " The 30 m, 90 m, 250 m, 500 m, 1 km, and 2 km grids are on the site."
-                : " The 500 m, 1 km, and 2 km grids are on the site.";
-        } else if (!COARSE_RESOLUTIONS.includes(state.resolution) && !bakedHere && !(fineOn && FINE_RESOLUTIONS.includes(state.resolution))) {
-            text += " The 500 m, 1 km, and 2 km grids are on the site.";
+            text += availableText;
+        } else if (!COARSE_RESOLUTIONS.includes(state.resolution) && !bakedHere && !hostedHere && !(fineOn && FINE_RESOLUTIONS.includes(state.resolution))) {
+            text += availableText;
         }
         note.textContent = text;
     }
@@ -2501,8 +2523,12 @@ function bootWatershedPage() {
             loader = sampleCoarse(state.feature, resolution, controller.signal);
         } else if (bakedId) {
             loader = sampleElevations(state.feature, controller.signal, bakedId);
+        } else if (location.protocol === "https:" && HOSTED_RESOLUTIONS.includes(resolution)) {
+            loader = sampleHosted(state.feature, resolution, controller.signal);
         } else if (FINE_RESOLUTIONS.includes(resolution)) {
-            loader = sampleFine(state.feature, resolution, controller.signal);
+            loader = location.protocol === "https:"
+                ? Promise.reject(new Error("https-fine"))
+                : sampleFine(state.feature, resolution, controller.signal);
         } else {
             loader = sampleElevations(state.feature, controller.signal);
         }
@@ -2523,9 +2549,13 @@ function bootWatershedPage() {
             state.reliefImage = null;
             state.elevMiss = id;
             if (note) {
-                note.textContent = error && error.message === "grid size"
-                    ? `This basin is above 4,000,000 cells at ${resolutionLabel(resolution)}, so that print grid stays unloaded. The map still shows the 5 km DEM overview.`
-                    : missingGridText();
+                if (error && error.message === "grid size") {
+                    note.textContent = `This basin is above 4,000,000 cells at ${resolutionLabel(resolution)}, so that print grid stays unloaded. The map still shows the 5 km DEM overview.`;
+                } else if (error && error.message === "https-fine") {
+                    note.textContent = `The ${resolutionLabel(resolution)} grid for this basin is not on the public site. The map still shows the 5 km DEM overview.`;
+                } else {
+                    note.textContent = missingGridText();
+                }
             }
         });
     }
