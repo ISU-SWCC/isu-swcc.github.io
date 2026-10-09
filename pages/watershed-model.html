@@ -7,7 +7,7 @@
     <title>Watershed Flow Model — Soil and Water Conservation Club</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
     <link href="../assets/vendor/maplibre-gl/maplibre-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="../styles/watershed-model.css?v=20261008h">
+    <link rel="stylesheet" href="../styles/watershed-model.css?v=20261008i">
 </head>
 
 <body>
@@ -22,6 +22,11 @@
             <div class="map-column">
                 <div id="map" role="application" aria-label="Watershed map"></div>
                 <p class="map-note" id="map-note"></p>
+                <div class="print-model" id="print-model" hidden>
+                    <p class="eyebrow">Print model</p>
+                    <canvas id="print-view" aria-label="Print model"></canvas>
+                    <p class="field-note" id="print-status"></p>
+                </div>
             </div>
             <form class="controls" id="model-form">
                 <section class="fold is-open" id="fold-watershed">
@@ -151,7 +156,7 @@
     </main>
     <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20261008k"></script>
+    <script src="../assets/js/watershed-model.js?v=20261009b"></script>
 </body>
 
 </html>

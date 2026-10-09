@@ -1,10 +1,11 @@
 {
   "source": "Print rates recorded 2026-10-08. Printer $6000 over 10000 hours, 180 print days, 10% failed prints, 12 cents per kWh, 500 W, $16/h, 1 hour per 24 in square, packaging 10% of model and kits plus 30% of tile weight, safety 10%, profit 50%. Filament: PLA Bulk $12/kg from the 2026 Sunlu 5 kg pack; PLA Enterprise $32/kg from the Prusament $30-34 band; PET Bulk $12/kg above the 8 October 2026 Polymaker 10 kg PETG listing at $9/kg; PET Enterprise $30/kg in that same premium band; ASA Bulk $17/kg from the ELEGOO ASA listing at $16.99; ASA Enterprise $40/kg at the top of the October 2026 ASA range. Printable PET is PETG. Shipping: UPS Ground published daily rates effective 22 December 2025, zones by straight-line miles from Ames, dimensional weight divisor 139. Destination ZIPs are 2024 Census ZCTA internal points. Kit prices are the club's item estimates. Boundaries: Content/WatershedBoundaries.geojson. No checkout on this page.",
   "title": "Watershed Flow Model",
-  "intro": "A physical watershed model made of 24-inch squares. The map starts on an example basin. Replace the boundary file when the club dataset is ready.",
+  "intro": "A physical watershed model made of 24-inch squares. Search USGS watersheds by name or HUC code. The map opens on Walnut Creek, HUC 0708020806.",
   "square_inches": 24,
   "max_squares": 100,
   "boundaries_file": "Data/Service/SWCC/Website/Content/WatershedBoundaries.geojson",
+  "boundaries_catalog": "data/boundaries/index.json",
   "delineate_url": null,
   "printers": null,
   "assembly_days": null,

@@ -1,6 +1,6 @@
 {
   "title": "Watershed Flow Model",
-  "intro": "A physical watershed model made of 24-inch squares. Search USGS watersheds by name or HUC code. The map opens on an example basin near Ames.",
+  "intro": "A physical watershed model made of 24-inch squares. Search USGS watersheds by name or HUC code. The map opens on Walnut Creek, HUC 0708020806.",
   "square_inches": 24,
   "max_squares": 100,
   "boundaries_catalog": "data/boundaries/index.json",

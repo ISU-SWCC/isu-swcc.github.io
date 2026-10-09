@@ -1,4 +1,5 @@
 const WATERSHED_COLORS = ["white", "dem", "satellite", "topo"];
+const DEFAULT_HUC = "0708020806";
 const US_BOXES = [
     [-125, 24, -66, 50],
     [-170, 51, -129, 72],
@@ -24,8 +25,19 @@ const HUC_LABEL = {
     2: "HUC2", 4: "HUC4", 6: "HUC6", 8: "HUC8",
     10: "HUC10", 12: "HUC12", 14: "HUC14", 16: "HUC16",
 };
+
+function catalogOutlineSentence(level) {
+    if (level === "HUC10") return "The outline is simplified to about 220 m.";
+    if (level === "HUC12") return "The outline is simplified to about 110 m.";
+    if (level === "HUC14" || level === "HUC16") return "The outline is simplified to about 55 m.";
+    if (level === "HUC2" || level === "HUC4" || level === "HUC6" || level === "HUC8") {
+        return "The outline is simplified to about 1 km.";
+    }
+    return "The outline is simplified for the web catalog.";
+}
 const DEM_RESOLUTIONS = [30, 90, 250, 500, 1000, 2000, 5000];
 const COARSE_RESOLUTIONS = [500, 1000, 2000];
+const FINE_RESOLUTIONS = [30, 90, 250];
 const DEM_CELL_MIN = 100000;
 const DEM_CELL_MAX = 1000000;
 
@@ -1040,6 +1052,17 @@ function terrainHeight(elev, elevMin, metersPerInch, exaggeration) {
     return { baseIn: 0.5, totalIn: 0.5 + rise };
 }
 
+function gridMean(grid) {
+    let sum = 0;
+    let count = 0;
+    grid.values.forEach((value) => {
+        if (value == null) return;
+        sum += value;
+        count += 1;
+    });
+    return count ? sum / count : null;
+}
+
 function orderPayload(state) {
     const lines = quoteLines(state);
     const missing = lines.filter((line) => line.amount == null).map((line) => line.label);
@@ -1059,6 +1082,12 @@ function orderPayload(state) {
         rows: state.fit ? state.fit.rows : null,
         border_in: state.fit ? state.fit.borderIn : 0,
         meters_per_inch: state.fit ? state.fit.metersPerInch : null,
+        inches_per_meter: state.fit ? state.fit.inchesPerMeter : null,
+        cx: state.fit ? state.fit.cx : null,
+        cy: state.fit ? state.fit.cy : null,
+        origin: state.fit && state.fit.origin ? state.fit.origin : null,
+        lng0: state.fit ? state.fit.lng0 : null,
+        lat0: state.fit ? state.fit.lat0 : null,
         scale_m: state.fit ? state.fit.metersPerInch * 24 : state.scale,
         squares: [...state.squares].map(parseSquare),
         color: state.color,
@@ -1085,10 +1114,29 @@ function orderPayload(state) {
         vertical: state.vertical || null,
         print: state.printCrs ? {
             crs: state.printCrs.label,
+            crs_fit: {
+                kind: state.printCrs.kind,
+                zone: state.printCrs.zone,
+                south: !!state.printCrs.south,
+                lat_1: state.printCrs.lat_1,
+                lat_2: state.printCrs.lat_2,
+                lat_0: state.printCrs.lat_0,
+                lon_0: state.printCrs.lon_0,
+                label: state.printCrs.label,
+            },
             resolution_m: state.resolution,
             published_resolution_m: state.elevGrid && state.elevGrid.resolution_m != null
                 ? state.elevGrid.resolution_m
                 : null,
+        } : null,
+        elevation: state.elevGrid ? {
+            box: state.elevGrid.box,
+            cols: state.elevGrid.cols,
+            rows: state.elevGrid.rows || state.elevGrid.n,
+            min: state.elevGrid.min,
+            max: state.elevGrid.max,
+            mean: gridMean(state.elevGrid),
+            resolution_m: state.elevGrid.resolution_m,
         } : null,
         dem_cells: (() => {
             const area = basinAreaM2(state.feature);
@@ -1117,6 +1165,8 @@ function decodeElevationValues(payload) {
 }
 
 let demBookPromise = null;
+let fineBookPromise = null;
+let fineBook = null;
 const demTileCache = new Map();
 
 function loadDemBook() {
@@ -1129,10 +1179,39 @@ function loadDemBook() {
     return demBookPromise;
 }
 
-async function demTile(url, signal) {
+function loadFineBook() {
+    if (!fineBookPromise) {
+        fineBookPromise = loadJSON(assetPath("data/dem/fine.json")).then((book) => {
+            fineBook = book;
+            return book;
+        }).catch((error) => {
+            fineBookPromise = null;
+            fineBook = null;
+            throw error;
+        });
+    }
+    return fineBookPromise;
+}
+
+function decodeMask(text) {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+}
+
+function maskHas(mask, tilesX, tx, ty) {
+    const index = ty * tilesX + tx;
+    const byteIndex = index >> 3;
+    if (byteIndex < 0 || byteIndex >= mask.length) return false;
+    return (mask[byteIndex] & (1 << (index & 7))) !== 0;
+}
+
+async function demTile(url, signal, missingMode) {
     if (demTileCache.has(url)) return demTileCache.get(url);
-    const response = await fetch(url, { signal });
+    const response = await fetch(url, { signal, redirect: missingMode === "fail" ? "error" : "follow" });
     if (response.status === 404) {
+        if (missingMode === "fail") throw new Error("missing tile");
         demTileCache.set(url, null);
         return null;
     }
@@ -1173,11 +1252,12 @@ function maskRaster(geometry, west, north, cell, width, height) {
     return ctx.getImageData(0, 0, width, height).data;
 }
 
-async function sampleCoarse(feature, resolution, signal) {
+async function sampleTiled(feature, resolution, signal, book, urlFor, maskMode) {
     const id = feature.properties && feature.properties.id;
-    const book = await loadDemBook();
     const spec = book && book.grids && book.grids[String(resolution)];
     if (!id || !spec) throw new Error("no coarse grid");
+    const presence = maskMode === "mask" ? decodeMask(spec.mask || "") : null;
+    if (maskMode === "mask" && (!presence || !spec.tiles_x)) throw new Error("no fine grid");
     const bounds = featureBbox(feature);
     const cell = spec.cell_deg;
     let col0 = Math.floor((bounds[0] - spec.west) / cell);
@@ -1205,7 +1285,11 @@ async function sampleCoarse(feature, resolution, signal) {
             const index = cursor;
             cursor += 1;
             const [tx, ty] = jobs[index];
-            const pixels = await demTile(assetPath(`data/dem/${resolution}/${tx}/${ty}.png`), signal);
+            if (presence && !maskHas(presence, spec.tiles_x, tx, ty)) {
+                tiles.set(`${tx}/${ty}`, null);
+                continue;
+            }
+            const pixels = await demTile(urlFor(tx, ty), signal, presence ? "fail" : "ocean");
             tiles.set(`${tx}/${ty}`, pixels);
         }
     };
@@ -1262,10 +1346,48 @@ async function sampleCoarse(feature, resolution, signal) {
     };
 }
 
-async function sampleElevations(feature, signal) {
+async function sampleCoarse(feature, resolution, signal) {
+    const book = await loadDemBook();
+    return sampleTiled(
+        feature,
+        resolution,
+        signal,
+        book,
+        (tx, ty) => assetPath(`data/dem/${resolution}/${tx}/${ty}.png`),
+        "ocean",
+    );
+}
+
+const FINE_TILE_BASES = new Set([
+    "http://el4352-ws.iastate.edu:8080/fine",
+    "http://10.27.15.160:8080/fine",
+]);
+
+async function sampleFine(feature, resolution, signal) {
+    const book = await loadFineBook();
+    const base = book && book.base ? String(book.base).replace(/\/$/, "") : "";
+    if (!FINE_TILE_BASES.has(base.toLowerCase())) throw new Error("no fine grid");
+    return sampleTiled(
+        feature,
+        resolution,
+        signal,
+        book,
+        (tx, ty) => `${base}/${resolution}/${tx}/${ty}.png`,
+        "mask",
+    );
+}
+
+function bakedFileId(id, resolution) {
+    if (id !== DEFAULT_HUC) return null;
+    if (resolution === 30) return id;
+    if (resolution === 90 || resolution === 250) return `${id}-${resolution}`;
+    return null;
+}
+
+async function sampleElevations(feature, signal, fileId) {
     const id = feature.properties && feature.properties.id;
     if (!id) throw new Error("no id");
-    const response = await fetch(assetPath(`data/elevation/${id}.json`), { signal });
+    const response = await fetch(assetPath(`data/elevation/${fileId || id}.json`), { signal });
     if (!response.ok) throw new Error(String(response.status));
     const data = await response.json();
     let streams = null;
@@ -1363,7 +1485,317 @@ if (typeof document !== "undefined" && document.getElementById("map")) {
     else bootFolds();
 }
 
+function campusOrderHost() {
+    const host = String(location.hostname || "").toLowerCase();
+    return host === "el4352-ws.iastate.edu" || host === "10.27.15.160";
+}
+
+function rotr32(value, bits) {
+    return ((value >>> bits) | (value << (32 - bits))) >>> 0;
+}
+
+function sha256Hex(bytes) {
+    const k = new Uint32Array([
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    ]);
+    const bits = bytes.length * 8;
+    const padded = new Uint8Array(((bytes.length + 9 + 63) & ~63));
+    padded.set(bytes);
+    padded[bytes.length] = 0x80;
+    const view = new DataView(padded.buffer);
+    view.setUint32(padded.length - 4, bits, false);
+    let h0 = 0x6a09e667;
+    let h1 = 0xbb67ae85;
+    let h2 = 0x3c6ef372;
+    let h3 = 0xa54ff53a;
+    let h4 = 0x510e527f;
+    let h5 = 0x9b05688c;
+    let h6 = 0x1f83d9ab;
+    let h7 = 0x5be0cd19;
+    const word = new Uint32Array(64);
+    for (let offset = 0; offset < padded.length; offset += 64) {
+        for (let index = 0; index < 16; index += 1) word[index] = view.getUint32(offset + index * 4, false);
+        for (let index = 16; index < 64; index += 1) {
+            const s0 = rotr32(word[index - 15], 7) ^ rotr32(word[index - 15], 18) ^ (word[index - 15] >>> 3);
+            const s1 = rotr32(word[index - 2], 17) ^ rotr32(word[index - 2], 19) ^ (word[index - 2] >>> 10);
+            word[index] = (word[index - 16] + s0 + word[index - 7] + s1) >>> 0;
+        }
+        let a = h0;
+        let b = h1;
+        let c = h2;
+        let d = h3;
+        let e = h4;
+        let f = h5;
+        let g = h6;
+        let h = h7;
+        for (let index = 0; index < 64; index += 1) {
+            const s1 = rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25);
+            const choose = (e & f) ^ (~e & g);
+            const temp1 = (h + s1 + choose + k[index] + word[index]) >>> 0;
+            const s0 = rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22);
+            const majority = (a & b) ^ (a & c) ^ (b & c);
+            const temp2 = (s0 + majority) >>> 0;
+            h = g;
+            g = f;
+            f = e;
+            e = (d + temp1) >>> 0;
+            d = c;
+            c = b;
+            b = a;
+            a = (temp1 + temp2) >>> 0;
+        }
+        h0 = (h0 + a) >>> 0;
+        h1 = (h1 + b) >>> 0;
+        h2 = (h2 + c) >>> 0;
+        h3 = (h3 + d) >>> 0;
+        h4 = (h4 + e) >>> 0;
+        h5 = (h5 + f) >>> 0;
+        h6 = (h6 + g) >>> 0;
+        h7 = (h7 + h) >>> 0;
+    }
+    return [h0, h1, h2, h3, h4, h5, h6, h7].map((value) => value.toString(16).padStart(8, "0")).join("");
+}
+
+function elevationSha(grid) {
+    const rows = grid.rows || grid.n;
+    const cols = grid.cols || grid.n;
+    const bytes = new Uint8Array(rows * cols * 2);
+    const view = new DataView(bytes.buffer);
+    for (let index = 0; index < rows * cols; index += 1) {
+        const value = grid.values[index];
+        view.setInt16(index * 2, value == null ? -32768 : Math.round(value), true);
+    }
+    return sha256Hex(bytes);
+}
+
+function multiply4(a, b) {
+    const out = new Array(16);
+    for (let col = 0; col < 4; col += 1) {
+        for (let row = 0; row < 4; row += 1) {
+            out[col * 4 + row] = a[row] * b[col * 4]
+                + a[4 + row] * b[col * 4 + 1]
+                + a[8 + row] * b[col * 4 + 2]
+                + a[12 + row] * b[col * 4 + 3];
+        }
+    }
+    return out;
+}
+
+function perspective4(fovy, aspect, near, far) {
+    const f = 1 / Math.tan(fovy / 2);
+    const nf = 1 / (near - far);
+    return [
+        f / aspect, 0, 0, 0,
+        0, f, 0, 0,
+        0, 0, (far + near) * nf, -1,
+        0, 0, 2 * far * near * nf, 0,
+    ];
+}
+
+function lookAt4(eye, center, up) {
+    let zx = eye[0] - center[0];
+    let zy = eye[1] - center[1];
+    let zz = eye[2] - center[2];
+    const zl = Math.hypot(zx, zy, zz) || 1;
+    zx /= zl;
+    zy /= zl;
+    zz /= zl;
+    let xx = up[1] * zz - up[2] * zy;
+    let xy = up[2] * zx - up[0] * zz;
+    let xz = up[0] * zy - up[1] * zx;
+    const xl = Math.hypot(xx, xy, xz) || 1;
+    xx /= xl;
+    xy /= xl;
+    xz /= xl;
+    const yx = zy * xz - zz * xy;
+    const yy = zz * xx - zx * xz;
+    const yz = zx * xy - zy * xx;
+    return [
+        xx, yx, zx, 0,
+        xy, yy, zy, 0,
+        xz, yz, zz, 0,
+        -(xx * eye[0] + xy * eye[1] + xz * eye[2]),
+        -(yx * eye[0] + yy * eye[1] + yz * eye[2]),
+        -(zx * eye[0] + zy * eye[1] + zz * eye[2]),
+        1,
+    ];
+}
+
+let printFrame = 0;
+
+function showPrintModel(field) {
+    const panel = document.getElementById("print-model");
+    const canvas = document.getElementById("print-view");
+    const note = document.getElementById("print-status");
+    if (!panel || !canvas) return;
+    panel.hidden = false;
+    if (printFrame) cancelAnimationFrame(printFrame);
+    const gl = canvas.getContext("webgl", { antialias: true, preserveDrawingBuffer: true });
+    if (!gl) {
+        if (note) note.textContent = "This browser has no WebGL view of the print model.";
+        return;
+    }
+    const nx = field.samples_x;
+    const ny = field.samples_y;
+    const heights = field.heights_in;
+    if (!nx || !ny || !heights || heights.length < 2) return;
+    const widthIn = field.cols * field.square_in;
+    const depthIn = field.rows * field.square_in;
+    let minH = Infinity;
+    let maxH = -Infinity;
+    heights.forEach((row) => row.forEach((value) => {
+        minH = Math.min(minH, value);
+        maxH = Math.max(maxH, value);
+    }));
+    const span = Math.max(1e-6, maxH - minH);
+    const positions = [];
+    const colors = [];
+    const at = (i, j) => {
+        const h = heights[j][i];
+        const tone = h <= 0.51 ? 0 : (h - minH) / span;
+        return [
+            (i / (nx - 1) - 0.5) * widthIn,
+            h,
+            (j / (ny - 1) - 0.5) * depthIn,
+            h <= 0.51 ? 0.78 : 0.42 + 0.34 * tone,
+            h <= 0.51 ? 0.76 : 0.36 + 0.08 * (1 - tone),
+            h <= 0.51 ? 0.72 : 0.22,
+        ];
+    };
+    const tri = (a, b, c) => {
+        [a, b, c].forEach((vert) => {
+            positions.push(vert[0], vert[1], vert[2]);
+            colors.push(vert[3], vert[4], vert[5]);
+        });
+    };
+    for (let j = 0; j < ny - 1; j += 1) {
+        for (let i = 0; i < nx - 1; i += 1) {
+            const sw = at(i, j);
+            const se = at(i + 1, j);
+            const nw = at(i, j + 1);
+            const ne = at(i + 1, j + 1);
+            tri(sw, se, nw);
+            tri(se, ne, nw);
+        }
+    }
+    const baseOf = (vert) => [vert[0], 0, vert[2], 0.75, 0.73, 0.7];
+    const wall = (p, q) => {
+        const pb = baseOf(p);
+        const qb = baseOf(q);
+        tri(pb, qb, q);
+        tri(pb, q, p);
+    };
+    for (let i = 0; i < nx - 1; i += 1) {
+        wall(at(i, 0), at(i + 1, 0));
+        wall(at(i + 1, ny - 1), at(i, ny - 1));
+    }
+    for (let j = 0; j < ny - 1; j += 1) {
+        wall(at(0, j + 1), at(0, j));
+        wall(at(nx - 1, j), at(nx - 1, j + 1));
+    }
+    const vertexSrc = `
+        attribute vec3 aPos;
+        attribute vec3 aColor;
+        uniform mat4 uMvp;
+        varying vec3 vColor;
+        void main() {
+            vColor = aColor;
+            gl_Position = uMvp * vec4(aPos, 1.0);
+        }`;
+    const fragmentSrc = `
+        precision mediump float;
+        varying vec3 vColor;
+        void main() {
+            gl_FragColor = vec4(vColor, 1.0);
+        }`;
+    const compile = (type, source) => {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        return shader;
+    };
+    const program = gl.createProgram();
+    gl.attachShader(program, compile(gl.VERTEX_SHADER, vertexSrc));
+    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragmentSrc));
+    gl.linkProgram(program);
+    gl.useProgram(program);
+    const buffer = gl.createBuffer();
+    const interleaved = new Float32Array(positions.length / 3 * 6);
+    for (let index = 0; index < positions.length / 3; index += 1) {
+        interleaved[index * 6] = positions[index * 3];
+        interleaved[index * 6 + 1] = positions[index * 3 + 1];
+        interleaved[index * 6 + 2] = positions[index * 3 + 2];
+        interleaved[index * 6 + 3] = colors[index * 3];
+        interleaved[index * 6 + 4] = colors[index * 3 + 1];
+        interleaved[index * 6 + 5] = colors[index * 3 + 2];
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, interleaved, gl.STATIC_DRAW);
+    const stride = 24;
+    const posLoc = gl.getAttribLocation(program, "aPos");
+    const colorLoc = gl.getAttribLocation(program, "aColor");
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(colorLoc);
+    gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, stride, 12);
+    gl.enable(gl.DEPTH_TEST);
+    gl.clearColor(0.957, 0.957, 0.957, 1);
+    const mvpLoc = gl.getUniformLocation(program, "uMvp");
+    const count = positions.length / 3;
+    let yaw = 0.7;
+    let polar = 1.05;
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    canvas.onpointerdown = (event) => {
+        dragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        canvas.setPointerCapture(event.pointerId);
+    };
+    canvas.onpointermove = (event) => {
+        if (!dragging) return;
+        yaw += (event.clientX - lastX) * 0.01;
+        polar = Math.min(1.4, Math.max(0.2, polar + (event.clientY - lastY) * 0.01));
+        lastX = event.clientX;
+        lastY = event.clientY;
+    };
+    canvas.onpointerup = () => {
+        dragging = false;
+    };
+    const draw = () => {
+        const width = Math.max(1, canvas.clientWidth);
+        const height = Math.max(1, canvas.clientHeight);
+        const ratio = window.devicePixelRatio || 1;
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        const radius = Math.max(widthIn, depthIn) * 0.95;
+        const eye = [
+            radius * Math.sin(polar) * Math.sin(yaw),
+            Math.cos(polar) * radius * 0.55 + maxH,
+            radius * Math.sin(polar) * Math.cos(yaw),
+        ];
+        const view = lookAt4(eye, [0, maxH * 0.5, 0], [0, 1, 0]);
+        const projection = perspective4(0.65, canvas.width / canvas.height, 0.5, radius * 6);
+        gl.uniformMatrix4fv(mvpLoc, false, new Float32Array(multiply4(projection, view)));
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, count);
+        printFrame = requestAnimationFrame(draw);
+    };
+    draw();
+    if (note) note.textContent = "This is the print model. Drag to turn it.";
+}
+
 function bootWatershedPage() {
+    loadFineBook().catch(() => {});
     const state = {
         rates: null,
         boundaries: [],
@@ -1378,7 +1810,7 @@ function bootWatershedPage() {
         fit: null,
         squares: new Set(),
         scale: null,
-        color: "dem",
+        color: "topo",
         resolution: DEM_RESOLUTIONS[0],
         resolutionManual: false,
         ramp: "cd-a",
@@ -1402,6 +1834,7 @@ function bootWatershedPage() {
         city: "",
         street: "",
         recipient: "",
+        orderBusy: false,
     };
 
     let map = null;
@@ -1409,9 +1842,9 @@ function bootWatershedPage() {
     try {
         map = new maplibregl.Map({
             container: "map",
-            style: mapStyle("white", "cd-a"),
-            center: [-93.63, 42.03],
-            zoom: 4,
+            style: mapStyle("topo", "cd-a"),
+            center: [-92.50444, 41.83999],
+            zoom: 10,
         });
     } catch (error) {
         map = null;
@@ -1453,8 +1886,17 @@ function bootWatershedPage() {
         state.boundaries = (collection.features || []).filter((feature) => feature.geometry
             && (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon"));
         renderResults("");
-        const first = state.boundaries.find((feature) => feature.properties && feature.properties.example) || state.boundaries[0];
-        if (first) adoptFeature(first);
+        const preferred = state.boundaries.find((feature) => {
+            const props = feature.properties || {};
+            return String(props.code || props.id || "") === DEFAULT_HUC;
+        });
+        if (preferred) adoptFeature(preferred);
+        else if (state.catalog && state.catalog.rows) {
+            const row = state.catalog.rows.find((item) => String(item[1]) === DEFAULT_HUC);
+            if (row) chooseCatalog(row);
+            else if (state.boundaries[0]) adoptFeature(state.boundaries[0]);
+            else render();
+        } else if (state.boundaries[0]) adoptFeature(state.boundaries[0]);
         else render();
     }).catch((error) => {
         document.getElementById("map-note").textContent = "The model rates did not load.";
@@ -1516,6 +1958,15 @@ function bootWatershedPage() {
     });
     document.getElementById("model-form").addEventListener("submit", (event) => event.preventDefault());
     document.getElementById("save-quote").addEventListener("click", saveQuote);
+    document.getElementById("order-btn").addEventListener("click", () => {
+        recordOrder().catch((error) => {
+            console.error(error);
+            const status = document.getElementById("print-status");
+            if (status) status.textContent = "The order was not recorded.";
+            state.orderBusy = false;
+            syncOrderButton();
+        });
+    });
 
     function moneyText(amount) {
         return Number(amount).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -1879,11 +2330,17 @@ function bootWatershedPage() {
         if (cells > 4000000) {
             text += " A bake above 4,000,000 cells uses a coarser grid.";
         }
-        const exampleThirty = state.resolution === 30
-            && state.feature
-            && state.feature.properties
-            && state.feature.properties.id === "example-basin";
-        if (!COARSE_RESOLUTIONS.includes(state.resolution) && !exampleThirty) {
+        const bakedHere = Boolean(bakedFileId(
+            state.feature && state.feature.properties && state.feature.properties.id,
+            state.resolution,
+        ));
+        const fineGrids = fineBook && fineBook.grids;
+        const fineOn = Boolean(fineGrids && fineGrids["30"] && fineGrids["90"] && fineGrids["250"]);
+        if (state.resolution === 5000) {
+            text += fineOn
+                ? " The 30 m, 90 m, 250 m, 500 m, 1 km, and 2 km grids are on the site."
+                : " The 500 m, 1 km, and 2 km grids are on the site.";
+        } else if (!COARSE_RESOLUTIONS.includes(state.resolution) && !bakedHere && !(fineOn && FINE_RESOLUTIONS.includes(state.resolution))) {
             text += " The 500 m, 1 km, and 2 km grids are on the site.";
         }
         note.textContent = text;
@@ -2034,9 +2491,17 @@ function bootWatershedPage() {
         state.elevAbort = controller;
         state.elevLoading = loadKey;
         state.elevMiss = null;
-        const loader = COARSE_RESOLUTIONS.includes(resolution)
-            ? sampleCoarse(state.feature, resolution, controller.signal)
-            : sampleElevations(state.feature, controller.signal);
+        const bakedId = bakedFileId(id, resolution);
+        let loader;
+        if (COARSE_RESOLUTIONS.includes(resolution)) {
+            loader = sampleCoarse(state.feature, resolution, controller.signal);
+        } else if (bakedId) {
+            loader = sampleElevations(state.feature, controller.signal, bakedId);
+        } else if (FINE_RESOLUTIONS.includes(resolution)) {
+            loader = sampleFine(state.feature, resolution, controller.signal);
+        } else {
+            loader = sampleElevations(state.feature, controller.signal);
+        }
         loader.then((grid) => {
             if (controller.signal.aborted) return;
             if (!state.feature || !(state.feature.properties && state.feature.properties.id === id)) return;
@@ -2067,6 +2532,7 @@ function bootWatershedPage() {
             ? `<div class="total"><span>Total</span><span class="missing">Needs ${escapeHtml(payload.missing.join(", "))}</span></div>`
             : `<div class="total"><span>Total</span><span>${money(payload.total)}</span></div>`;
         document.getElementById("quote").innerHTML = rows + total;
+        syncOrderButton();
         const days = payload.delivery;
         const parts = [];
         if (days.printHours == null) parts.push("Print time appears after the elevation loads.");
@@ -2096,10 +2562,12 @@ function bootWatershedPage() {
         let text;
         if (props.dataset === "us-wbd") {
             const where = props.states ? ` ${props.states}.` : "";
-            text = `${name}, ${props.level} ${props.code}.${where} USGS Watershed Boundary Dataset. The red line is the basin. The black squares are the model. The outline is simplified to about 1 km. The surface inside the squares is a preview, not the print file.`;
+            const outline = props.outline === "source"
+                ? "The red line is the USGS boundary."
+                : `The red line is the basin. ${catalogOutlineSentence(props.level)}`;
+            text = `${name}, ${props.level} ${props.code}.${where} USGS Watershed Boundary Dataset. ${outline} The black squares are the model. The surface inside the squares is a preview, not the print file.`;
         } else {
-            const exampleOnly = props.example || (state.boundaries.length === 1 && state.boundaries[0].properties && state.boundaries[0].properties.example);
-            text = `${name}${exampleOnly ? " is an example near Ames. Search by name or HUC code for a USGS watershed" : ""}. The red line is the basin. The black squares are the model. The surface inside them is a preview, not the print file.`;
+            text = `${name}. The red line is the basin. The black squares are the model. The surface inside them is a preview, not the print file.`;
         }
         const id = state.feature.properties && state.feature.properties.id;
         const grid = state.elevGrid;
@@ -2133,6 +2601,7 @@ function bootWatershedPage() {
             exaggeration: state.exaggeration,
             vertical: state.vertical,
             elevGrid: state.elevGrid,
+            resolution: state.resolution,
             printCrs: state.printCrs,
             material: state.material,
             grade: state.grade,
@@ -2252,6 +2721,60 @@ function bootWatershedPage() {
         };
         if (map.isStyleLoaded()) addOverlays();
         else map.once("idle", addOverlays);
+    }
+
+    function syncOrderButton() {
+        const button = document.getElementById("order-btn");
+        if (!button) return;
+        const ready = campusOrderHost() && !state.orderBusy && orderPayload(readForm()).quote_complete;
+        button.disabled = !ready;
+        if (!state.orderBusy) button.textContent = ready ? "Record order" : "Order";
+    }
+
+    async function recordOrder() {
+        if (state.orderBusy || !campusOrderHost()) return;
+        const payload = orderPayload(readForm());
+        if (!payload.quote_complete || !payload.elevation || !state.elevGrid) return;
+        state.orderBusy = true;
+        syncOrderButton();
+        const button = document.getElementById("order-btn");
+        button.textContent = "Recording";
+        const panel = document.getElementById("print-model");
+        const note = document.getElementById("print-status");
+        if (panel) panel.hidden = false;
+        if (note) note.textContent = "Recording the order.";
+        payload.elevation.values_sha256 = await elevationSha(state.elevGrid);
+        const response = await fetch("/order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        if (response.status !== 202) throw new Error(String(response.status));
+        const accepted = await response.json();
+        if (note) note.textContent = "Building the print model.";
+        let status = null;
+        for (let attempt = 0; attempt < 90; attempt += 1) {
+            const check = await fetch(`/order/${accepted.id}`, { cache: "no-store" });
+            if (!check.ok) throw new Error(String(check.status));
+            status = await check.json();
+            if (status.state === "ready" || status.state === "held" || status.state === "failed") break;
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        if (!status || status.state !== "ready") {
+            if (note) {
+                note.textContent = status && status.state === "held"
+                    ? "The shop held this order. The print files were not written."
+                    : "The print files were not written.";
+            }
+            state.orderBusy = false;
+            syncOrderButton();
+            return;
+        }
+        const preview = await fetch(`/print-preview/${accepted.id}.json`, { cache: "no-store" });
+        if (!preview.ok) throw new Error(String(preview.status));
+        showPrintModel(await preview.json());
+        state.orderBusy = false;
+        syncOrderButton();
     }
 
     function saveQuote() {

@@ -296,6 +296,26 @@ body {
     cursor: not-allowed;
 }
 
+.order-btn:enabled {
+    border-color: #C8102E;
+    background: #C8102E;
+    color: #fff;
+    cursor: pointer;
+}
+
+.print-model { margin-top: 16px; }
+
+.print-model[hidden] { display: none; }
+
+#print-view {
+    width: 100%;
+    height: 320px;
+    border-radius: 16px;
+    background: #f4f4f4;
+    display: block;
+    touch-action: none;
+}
+
 @media (max-width: 800px) {
     .model-page h1 { font-size: 32px; }
     .model-layout { grid-template-columns: 1fr; }
