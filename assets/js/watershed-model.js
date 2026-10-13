@@ -27,11 +27,11 @@ const HUC_LABEL = {
 };
 
 function catalogOutlineSentence(level) {
-    if (level === "HUC10") return "The outline is simplified to about 220 m.";
-    if (level === "HUC12") return "The outline is simplified to about 110 m.";
-    if (level === "HUC14" || level === "HUC16") return "The outline is simplified to about 55 m.";
+    if (level === "HUC10") return "The outline is simplified to about 110 m.";
+    if (level === "HUC12") return "The outline is simplified to about 55 m.";
+    if (level === "HUC14" || level === "HUC16") return "The outline is simplified to about 22 m.";
     if (level === "HUC2" || level === "HUC4" || level === "HUC6" || level === "HUC8") {
-        return "The outline is simplified to about 1 km.";
+        return "The outline is simplified to about 550 m.";
     }
     return "The outline is simplified for the web catalog.";
 }
@@ -1887,7 +1887,7 @@ function bootWatershedPage() {
         loadJSON("../data/watershed-model.json"),
         loadJSON(assetPath("data/ramps.json")),
         loadJSON(assetPath("data/zip-centroids.json")).catch(() => null),
-        loadJSON(assetPath("data/boundaries/index.json")).catch(() => null),
+        loadJSON(assetPath("data/boundaries/index.json?v=20261013b")).catch(() => null),
     ]).then(async ([rates, rampBook, zips, catalog]) => {
         state.rates = rates;
         state.zips = zips;
@@ -2108,7 +2108,10 @@ function bootWatershedPage() {
     function geomUrl(row) {
         const spec = state.catalog && state.catalog.geom && state.catalog.geom[String(row[0])];
         if (!spec) return "";
-        if (spec.endsWith("/")) return `data/boundaries/${spec}${String(row[1]).slice(0, 2)}.json`;
+        if (spec.endsWith("/")) {
+            const digits = Number(state.catalog.prefix && state.catalog.prefix[String(row[0])]) || 2;
+            return `data/boundaries/${spec}${String(row[1]).slice(0, digits)}.json`;
+        }
         return `data/boundaries/${spec}`;
     }
 
