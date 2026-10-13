@@ -1463,7 +1463,7 @@ function paintRelief(grid, exaggeration, stops, rampId) {
             const north = at(row + 1, col);
             const dzdx = ((east == null ? elev : east) - elev) / cellX;
             const dzdy = ((north == null ? elev : north) - elev) / cellY;
-            const light = 0.78 + Math.max(-0.28, Math.min(0.28, (dzdy - dzdx) * exaggeration * 2));
+            const light = 0.78 + Math.max(-0.28, Math.min(0.28, (dzdx - dzdy) * exaggeration * 2));
             const color = reliefColor(elev, stops).map((channel) => Math.max(0, Math.min(255, Math.round(channel * light))));
             image.data[pixel] = color[0];
             image.data[pixel + 1] = color[1];
