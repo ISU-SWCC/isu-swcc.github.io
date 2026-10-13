@@ -1,5 +1,5 @@
-sha: c61552d68a8452b55a85dbb4c8a66a975f6c098c
+sha: f0457d47f6817dd43070f435340adea5dffe4f3a
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-13
-note: Basin hillshade lights northwest-facing slopes. The public page reads the national 250 m Copernicus grid from the unpublished dem-tiles branch. Walnut Creek remains the published 30 m, 90 m, and 250 m basin. Other basins at 90 m and 30 m stay on the campus host. A sample rectangle may reach 8,000,000 cells. A basin above 4,000,000 cells inside the outline stays unloaded. The vault folder is the working copy.
+note: Smaller watershed outlines keep more of the WBD line. HUC12 is about 55 m, HUC10 about 110 m, and HUC14 and HUC16 about 22 m. HUC2 through HUC8 are about 550 m. Basin hillshade lights northwest-facing slopes. The public page reads the national 250 m Copernicus grid from the unpublished dem-tiles branch. The vault folder is the working copy.
