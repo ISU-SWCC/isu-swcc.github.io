@@ -1,5 +1,5 @@
-sha: cd3ccbbe2f85b8776dfecb88c76d9d742b5d20a4
+sha: c61552d68a8452b55a85dbb4c8a66a975f6c098c
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
-published: 2026-10-09
-note: The public page reads the national 250 m Copernicus grid from the unpublished dem-tiles branch. Walnut Creek remains the published 30 m, 90 m, and 250 m basin. Other basins at 90 m and 30 m stay on the campus host. A sample rectangle may reach 8,000,000 cells. A basin above 4,000,000 cells inside the outline stays unloaded. The vault folder is the working copy.
+published: 2026-10-13
+note: Basin hillshade lights northwest-facing slopes. The public page reads the national 250 m Copernicus grid from the unpublished dem-tiles branch. Walnut Creek remains the published 30 m, 90 m, and 250 m basin. Other basins at 90 m and 30 m stay on the campus host. A sample rectangle may reach 8,000,000 cells. A basin above 4,000,000 cells inside the outline stays unloaded. The vault folder is the working copy.
