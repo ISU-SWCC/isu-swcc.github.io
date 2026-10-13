@@ -40,6 +40,11 @@ const COARSE_RESOLUTIONS = [500, 1000, 2000];
 const FINE_RESOLUTIONS = [30, 90, 250];
 const DEM_CELL_MIN = 100000;
 const DEM_CELL_MAX = 1000000;
+const BASIN_CELL_CAP = 4000000;
+// Cells inside the outline. The sample rectangle can be larger.
+// Copperas-Duck at 30 m is about 2.85 million basin cells in a
+// 17.1 million cell box. 32 million still rejects a pathological box.
+const BOX_CELL_CAP = 32000000;
 
 function resolutionLabel(meters) {
     const value = Number(meters);
@@ -81,6 +86,16 @@ function basinAreaM2(feature) {
     if (given > 0) return given * 1e6;
     const measured = feature && feature.geometry ? geometryAreaM2(feature.geometry) : 0;
     return measured > 0 ? measured : null;
+}
+
+function basinCellEstimate(feature, resolution) {
+    const area = basinAreaM2(feature);
+    if (!(area > 0) || !(resolution > 0)) return null;
+    return area / (resolution * resolution);
+}
+
+function cellCountText(count) {
+    return Math.round(count).toLocaleString("en-US");
 }
 
 function defaultResolutionM(areaM2) {
@@ -1270,10 +1285,28 @@ async function sampleTiled(feature, resolution, signal, book, urlFor, maskMode) 
     row1 = Math.max(0, Math.min(spec.rows, row1));
     const width = col1 - col0;
     const height = row1 - row0;
-    // 4,000,000 counts cells inside the basin, after the mask below.
-    // The sample rectangle is larger. South Skunk at 90 m is about
-    // 589,000 basin cells and 4,049,656 rectangle cells.
-    if (width < 2 || height < 2 || width * height > 8000000) throw new Error("grid size");
+    if (width < 2 || height < 2) throw new Error("empty grid");
+    const boxCells = width * height;
+    const basinCells = basinCellEstimate(feature, resolution);
+    // A box past the hard cap cannot be allocated. If the basin itself
+    // is over the cell cap, say that. Otherwise name the box.
+    if (boxCells > BOX_CELL_CAP) {
+        const error = new Error(basinCells > BASIN_CELL_CAP ? "grid size" : "grid box");
+        error.boxCells = boxCells;
+        error.basinCells = basinCells;
+        throw error;
+    }
+    const west = spec.west + col0 * cell;
+    const north = spec.north - row0 * cell;
+    let mask;
+    try {
+        mask = maskRaster(feature.geometry, west, north, cell, width, height);
+    } catch (rasterError) {
+        const error = new Error(basinCells > BASIN_CELL_CAP ? "grid size" : "grid box");
+        error.boxCells = boxCells;
+        error.basinCells = basinCells;
+        throw error;
+    }
     const tile = book.tile || 256;
     const tiles = new Map();
     const jobs = [];
@@ -1297,9 +1330,6 @@ async function sampleTiled(feature, resolution, signal, book, urlFor, maskMode) 
         }
     };
     await Promise.all(Array.from({ length: Math.min(6, jobs.length) }, worker));
-    const west = spec.west + col0 * cell;
-    const north = spec.north - row0 * cell;
-    const mask = maskRaster(feature.geometry, west, north, cell, width, height);
     const values = new Array(width * height);
     let min = Infinity;
     let max = -Infinity;
@@ -1332,7 +1362,12 @@ async function sampleTiled(feature, resolution, signal, book, urlFor, maskMode) 
         }
     }
     if (!count) throw new Error("empty grid");
-    if (count > 4000000) throw new Error("grid size");
+    if (count > BASIN_CELL_CAP) {
+        const error = new Error("grid size");
+        error.basinCells = count;
+        error.boxCells = boxCells;
+        throw error;
+    }
     return {
         n: width,
         rows: height,
@@ -1845,6 +1880,8 @@ function bootWatershedPage() {
         reliefImage: null,
         elevLoading: null,
         elevMiss: null,
+        elevMissText: null,
+        elevMissResolution: null,
         elevAbort: null,
         material: "pla-bulk",
         grade: "standard",
@@ -2325,6 +2362,24 @@ function bootWatershedPage() {
         return `The ${resolutionLabel(state.resolution)} print grid for this basin is not on the site yet. The map still shows the 5 km DEM overview.`;
     }
 
+    function gridLimitText(error, resolution) {
+        const label = resolutionLabel(resolution);
+        if (error && error.message === "grid size") {
+            const counted = error.basinCells > 0
+                ? `about ${cellCountText(error.basinCells)} cells at ${label}, above the 4,000,000 cell limit, `
+                : `above 4,000,000 cells at ${label}, `;
+            return `This basin is ${counted}so that print grid stays unloaded. The map still shows the 5 km DEM overview.`;
+        }
+        if (error && error.message === "grid box") {
+            const box = error.boxCells > 0 ? cellCountText(error.boxCells) : "too many";
+            const basin = error.basinCells > 0
+                ? `about ${cellCountText(error.basinCells)} cells`
+                : "under the 4,000,000 cell limit";
+            return `This basin is ${basin} at ${label}. Its bounding box is ${box} cells, which is too large to sample, so that print grid stays unloaded. The map still shows the 5 km DEM overview.`;
+        }
+        return null;
+    }
+
     function syncResolution() {
         if (!state.resolutionManual && state.feature) {
             const area = basinAreaM2(state.feature);
@@ -2352,7 +2407,7 @@ function bootWatershedPage() {
         if (published && published !== state.resolution) {
             text += ` The preview uses the published ${resolutionLabel(published)} sample.`;
         }
-        if (cells > 4000000) {
+        if (cells > BASIN_CELL_CAP) {
             text += " A bake above 4,000,000 cells uses a coarser grid.";
         }
         const bakedHere = Boolean(bakedFileId(
@@ -2461,8 +2516,8 @@ function bootWatershedPage() {
         if (!fit || !grid) {
             state.vertical = null;
             const basinId = state.feature && state.feature.properties && state.feature.properties.id;
-            if (state.feature && state.elevMiss === basinId) {
-                note.textContent = missingGridText();
+            if (state.feature && state.elevMiss === basinId && state.elevMissResolution === state.resolution) {
+                note.textContent = state.elevMissText || missingGridText();
             } else {
                 note.textContent = grid ? "Choose a basin to scale the height." : "Elevation for this basin is loading.";
             }
@@ -2511,7 +2566,13 @@ function bootWatershedPage() {
                 || state.reliefImage.ramp !== ramp.id
                 || state.reliefImage.exaggeration !== applied;
             if (!ramp) state.reliefImage = null;
-            else if (stale) state.reliefImage = paintRelief(state.elevGrid, applied, ramp.stops, ramp.id);
+            else if (stale) {
+                try {
+                    state.reliefImage = paintRelief(state.elevGrid, applied, ramp.stops, ramp.id);
+                } catch (paintError) {
+                    state.reliefImage = null;
+                }
+            }
             return;
         }
         if (state.elevLoading === loadKey) return;
@@ -2520,6 +2581,8 @@ function bootWatershedPage() {
         state.elevAbort = controller;
         state.elevLoading = loadKey;
         state.elevMiss = null;
+        state.elevMissText = null;
+        state.elevMissResolution = null;
         const bakedId = bakedFileId(id, resolution);
         let loader;
         if (COARSE_RESOLUTIONS.includes(resolution)) {
@@ -2542,6 +2605,8 @@ function bootWatershedPage() {
             state.elevGrid = grid;
             state.elevLoading = null;
             state.elevMiss = null;
+            state.elevMissText = null;
+            state.elevMissResolution = null;
             state.reliefImage = null;
             render();
         }).catch((error) => {
@@ -2551,14 +2616,16 @@ function bootWatershedPage() {
             state.elevGrid = null;
             state.reliefImage = null;
             state.elevMiss = id;
+            state.elevMissResolution = resolution;
             if (note) {
-                if (error && error.message === "grid size") {
-                    note.textContent = `This basin is above 4,000,000 cells at ${resolutionLabel(resolution)}, so that print grid stays unloaded. The map still shows the 5 km DEM overview.`;
-                } else if (error && error.message === "https-fine") {
+                const limited = gridLimitText(error, resolution);
+                if (limited) note.textContent = limited;
+                else if (error && error.message === "https-fine") {
                     note.textContent = `The ${resolutionLabel(resolution)} grid for this basin is not on the public site. The map still shows the 5 km DEM overview.`;
                 } else {
                     note.textContent = missingGridText();
                 }
+                state.elevMissText = note.textContent;
             }
         });
     }
