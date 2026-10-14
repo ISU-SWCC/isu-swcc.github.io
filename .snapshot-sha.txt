@@ -1,5 +1,5 @@
-sha: 58d3717a48170f8c4a8967c38d36a9d173cc5340
+sha: 74ba271ec92a824cc52ee4e13f683a6698451d7e
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-14
-note: The map stays Web Mercator. UTM, a basin Albers, and CONUS Albers sit on the 3D print model. The basin DEM image is resampled from equal latitude to equal Mercator y. Print squares still use the chosen print CRS. The page script and stylesheet are ?v=20261013d.
+note: Color Range is CONUS or Watershed. CONUS keeps the ramp at 0 to 8,000 m. Watershed stretches those colors from the basin low to the basin high. The overview tiles stay on 0 to 8,000 m. The page script is watershed-model.js?v=20261014a.
