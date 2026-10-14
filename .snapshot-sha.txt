@@ -1,5 +1,5 @@
-sha: 6306bed4968aa15ff4d2c9539a013c732683794a
+sha: 2696de1d38f7168e21d8f81b40382d96861e78e7
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-14
-note: The page adds Render watershed flow model, sampled at the selected print layer height. On the public site, a basin without a published 30 m or 90 m file opens at 250 m, and those menu rows point to the campus page. Watershed choice is search by name or HUC code. The page script is watershed-model.js?v=20261014e and the stylesheet is watershed-model.css?v=20261014c.
+note: The watershed base stops at the buffer around the basin. It does not fill each 24-inch square. The page script is watershed-model.js?v=20261014f. The stylesheet is still watershed-model.css?v=20261014c.
