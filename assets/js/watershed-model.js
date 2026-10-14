@@ -903,6 +903,108 @@ function meanRiseIn(grid, fit, exaggeration) {
     return Math.max(0, (sum / count) - grid.min) / fit.metersPerInch * (Number(exaggeration) || 0);
 }
 
+function modelSampleCounts(widthIn, depthIn, cellIn, budget) {
+    const cell = cellIn > 0 ? cellIn : Math.max(widthIn, depthIn) / 127;
+    const limit = budget > 0 ? budget : 2000000;
+    let nx = Math.max(2, Math.round(widthIn / cell) + 1);
+    let ny = Math.max(2, Math.round(depthIn / cell) + 1);
+    while (nx * ny > limit && (nx > 2 || ny > 2)) {
+        nx = Math.max(2, Math.ceil(nx * 0.7));
+        ny = Math.max(2, Math.ceil(ny * 0.7));
+    }
+    return { nx, ny };
+}
+
+function chamferDistances(mask, nx, ny, stepX, stepY) {
+    const dist = new Float32Array(nx * ny);
+    const diag = Math.hypot(stepX, stepY);
+    const far = 1e6;
+    for (let index = 0; index < dist.length; index += 1) dist[index] = mask[index] ? 0 : far;
+    for (let j = 0; j < ny; j += 1) {
+        const row = j * nx;
+        const prev = row - nx;
+        for (let i = 0; i < nx; i += 1) {
+            let next = dist[row + i];
+            if (i > 0) next = Math.min(next, dist[row + i - 1] + stepX);
+            if (j > 0) {
+                next = Math.min(next, dist[prev + i] + stepY);
+                if (i > 0) next = Math.min(next, dist[prev + i - 1] + diag);
+                if (i + 1 < nx) next = Math.min(next, dist[prev + i + 1] + diag);
+            }
+            dist[row + i] = next;
+        }
+    }
+    for (let j = ny - 1; j >= 0; j -= 1) {
+        const row = j * nx;
+        const above = row + nx;
+        for (let i = nx - 1; i >= 0; i -= 1) {
+            let next = dist[row + i];
+            if (i + 1 < nx) next = Math.min(next, dist[row + i + 1] + stepX);
+            if (j + 1 < ny) {
+                next = Math.min(next, dist[above + i] + stepY);
+                if (i + 1 < nx) next = Math.min(next, dist[above + i + 1] + diag);
+                if (i > 0) next = Math.min(next, dist[above + i - 1] + diag);
+            }
+            dist[row + i] = next;
+        }
+    }
+    return dist;
+}
+
+function baseFootprintIn2(grid, fit) {
+    const empty = { baseIn2: 0, basinRasterIn2: 0 };
+    if (!grid || !fit || !(fit.outerWidthIn > 0) || !(fit.outerHeightIn > 0) || !grid.values) return empty;
+    const border = fit.borderIn || 0;
+    const signature = [
+        grid.key,
+        grid.resolution_m,
+        fit.cols,
+        fit.rows,
+        fit.rotationDeg,
+        fit.inchesPerMeter,
+        border,
+        fit.cx,
+        fit.cy,
+        fit.crs ? fit.crs.label : "",
+    ].join("|");
+    if (grid._footprint && grid._footprint.signature === signature) return grid._footprint;
+    const widthIn = fit.outerWidthIn;
+    const depthIn = fit.outerHeightIn;
+    const counts = modelSampleCounts(widthIn, depthIn, demCellInches(grid, fit), 400000);
+    const nx = counts.nx;
+    const ny = counts.ny;
+    const stepX = nx === 1 ? widthIn : widthIn / (nx - 1);
+    const stepY = ny === 1 ? depthIn : depthIn / (ny - 1);
+    const mask = new Uint8Array(nx * ny);
+    const halfW = widthIn / 2;
+    const halfH = depthIn / 2;
+    for (let j = 0; j < ny; j += 1) {
+        const my = -halfH + (ny === 1 ? 0 : (j / (ny - 1)) * depthIn);
+        for (let i = 0; i < nx; i += 1) {
+            const mx = -halfW + (nx === 1 ? 0 : (i / (nx - 1)) * widthIn);
+            const lnglat = modelInchesToLngLat(mx, my, fit);
+            if (sampleGridElev(grid, lnglat[0], lnglat[1]) == null) continue;
+            mask[j * nx + i] = 1;
+        }
+    }
+    const dist = border > 0 ? chamferDistances(mask, nx, ny, stepX, stepY) : null;
+    const limit = border + 1e-6;
+    let basinCells = 0;
+    let baseCells = 0;
+    for (let index = 0; index < mask.length; index += 1) {
+        if (mask[index]) basinCells += 1;
+        if (mask[index] || (dist && dist[index] <= limit)) baseCells += 1;
+    }
+    const cellArea = stepX * stepY;
+    const result = {
+        signature,
+        basinRasterIn2: basinCells * cellArea,
+        baseIn2: baseCells * cellArea,
+    };
+    grid._footprint = result;
+    return result;
+}
+
 function printEstimate(state) {
     const spec = state.rates && state.rates.print;
     const material = spec && spec.materials ? spec.materials[state.material] : null;
@@ -939,12 +1041,19 @@ function printEstimate(state) {
         basinIn2 = tileIn2;
         areaSource = "tiles";
     } else if (basinIn2 > tileIn2) basinIn2 = tileIn2;
-    const baseCm3 = tileIn2 * baseIn * CUBIC_INCH_CM3 * infill;
+    const footprint = baseFootprintIn2(state.elevGrid, state.fit);
+    let baseIn2 = footprint.baseIn2;
+    if (areaSource === "basin" && footprint.basinRasterIn2 > 0 && basinIn2 > 0) {
+        baseIn2 *= basinIn2 / footprint.basinRasterIn2;
+    }
+    if (!(baseIn2 > 0)) baseIn2 = tileIn2;
+    if (baseIn2 > tileIn2) baseIn2 = tileIn2;
+    const baseCm3 = baseIn2 * baseIn * CUBIC_INCH_CM3 * infill;
     const reliefCm3 = basinIn2 * riseIn * CUBIC_INCH_CM3 * infill;
     const plasticCm3 = baseCm3 + reliefCm3;
     const kg = plasticCm3 * density / 1000;
     const hours = (plasticCm3 * 1000) / flow / 3600;
-    const height = tileIn2 > 0 ? (baseIn * tileIn2 + riseIn * basinIn2) / tileIn2 : baseIn;
+    const height = baseIn2 > 0 ? (baseIn * baseIn2 + riseIn * basinIn2) / baseIn2 : baseIn;
     const tileFactor = (square / 24) * (square / 24);
     const laborHours = squares * laborEach * tileFactor;
     const materialCost = kg * price;
@@ -979,6 +1088,7 @@ function printEstimate(state) {
         riseIn,
         tileIn2,
         basinIn2,
+        baseIn2,
         areaSource,
         baseCm3,
         reliefCm3,
@@ -1229,6 +1339,7 @@ function orderPayload(state) {
         volume: estimate.ready ? {
             tile_in2: estimate.tileIn2,
             basin_in2: estimate.basinIn2,
+            base_in2: estimate.baseIn2,
             area_source: estimate.areaSource,
             base_cm3: estimate.baseCm3,
             relief_cm3: estimate.reliefCm3,
@@ -1983,17 +2094,6 @@ function syncPrintViewBlank(signature) {
     }
 }
 
-function inPrintLip(mx, my, fit) {
-    const border = fit.borderIn || 0;
-    if (border <= 0) return false;
-    const halfW = fit.outerWidthIn / 2;
-    const halfH = fit.outerHeightIn / 2;
-    return mx <= -halfW + border
-        || mx >= halfW - border
-        || my <= -halfH + border
-        || my >= halfH - border;
-}
-
 function demCellInches(grid, fit) {
     const west = grid.box[0];
     const south = grid.box[1];
@@ -2061,18 +2161,16 @@ async function buildViewField(form, token, paint) {
     const applied = form.vertical && Number.isFinite(form.vertical.applied)
         ? form.vertical.applied
         : appliedExaggeration(form.exaggeration, reliefM, fit.metersPerInch, baseIn);
-    let cellIn = demCellInches(grid, fit);
-    if (!(cellIn > 0)) cellIn = Math.max(widthIn, depthIn) / 127;
-    let nx = Math.max(2, Math.round(widthIn / cellIn) + 1);
-    let ny = Math.max(2, Math.round(depthIn / cellIn) + 1);
-    while (nx * ny > 2000000 && (nx > 2 || ny > 2)) {
-        nx = Math.max(2, Math.ceil(nx * 0.7));
-        ny = Math.max(2, Math.ceil(ny * 0.7));
-    }
+    const counts = modelSampleCounts(widthIn, depthIn, demCellInches(grid, fit));
+    const nx = counts.nx;
+    const ny = counts.ny;
     const height = new Float32Array(nx * ny);
     const elev = new Float32Array(nx * ny);
+    const cover = new Uint8Array(nx * ny);
     const halfW = widthIn / 2;
     const halfH = depthIn / 2;
+    const stepX = nx === 1 ? widthIn : widthIn / (nx - 1);
+    const stepY = ny === 1 ? depthIn : depthIn / (ny - 1);
     const total = nx * ny;
     for (let cursor = 0; cursor < total; cursor += 25000) {
         if (token !== printViewToken) return null;
@@ -2082,22 +2180,29 @@ async function buildViewField(form, token, paint) {
             const j = (index / nx) | 0;
             const mx = -halfW + (nx === 1 ? 0 : (i / (nx - 1)) * widthIn);
             const my = -halfH + (ny === 1 ? 0 : (j / (ny - 1)) * depthIn);
-            if (inPrintLip(mx, my, fit)) {
-                height[index] = baseIn;
-                elev[index] = NaN;
-                continue;
-            }
             const lnglat = modelInchesToLngLat(mx, my, fit);
             const sample = sampleGridElev(grid, lnglat[0], lnglat[1]);
             if (sample == null) {
-                height[index] = baseIn;
+                height[index] = 0;
                 elev[index] = NaN;
             } else {
                 height[index] = terrainHeight(sample, grid.min, fit.metersPerInch, applied, baseIn).totalIn;
                 elev[index] = sample;
+                cover[index] = 1;
             }
         }
         await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    if (token !== printViewToken) return null;
+    const border = fit.borderIn || 0;
+    if (border > 0) {
+        const dist = chamferDistances(cover, nx, ny, stepX, stepY);
+        const limit = border + 1e-6;
+        for (let index = 0; index < total; index += 1) {
+            if (cover[index] || !(dist[index] <= limit)) continue;
+            cover[index] = 1;
+            height[index] = baseIn;
+        }
     }
     if (token !== printViewToken) return null;
     return {
@@ -2115,10 +2220,11 @@ async function buildViewField(form, token, paint) {
         source: {
             nx,
             ny,
-            stepX: nx === 1 ? widthIn : widthIn / (nx - 1),
-            stepY: ny === 1 ? depthIn : depthIn / (ny - 1),
+            stepX,
+            stepY,
             height,
             elev,
+            cover,
         },
     };
 }
@@ -2133,22 +2239,42 @@ function sourceSample(view, mx, my) {
     const j1 = Math.min(src.ny - 1, j0 + 1);
     const tx = i0 === i1 ? 0 : Math.max(0, Math.min(1, u - i0));
     const ty = j0 === j1 ? 0 : Math.max(0, Math.min(1, v - j0));
-    const i00 = j0 * src.nx + i0;
-    const i10 = j0 * src.nx + i1;
-    const i01 = j1 * src.nx + i0;
-    const i11 = j1 * src.nx + i1;
-    const e00 = src.elev[i00];
-    const e10 = src.elev[i10];
-    const e01 = src.elev[i01];
-    const e11 = src.elev[i11];
-    if (!Number.isFinite(e00) || !Number.isFinite(e10) || !Number.isFinite(e01) || !Number.isFinite(e11)) {
-        return { h: view.baseIn, elev: NaN, flat: true };
+    const ids = [
+        j0 * src.nx + i0,
+        j0 * src.nx + i1,
+        j1 * src.nx + i0,
+        j1 * src.nx + i1,
+    ];
+    const weights = [(1 - tx) * (1 - ty), tx * (1 - ty), (1 - tx) * ty, tx * ty];
+    let nearest = 0;
+    for (let corner = 1; corner < 4; corner += 1) {
+        if (weights[corner] > weights[nearest]) nearest = corner;
     }
-    const h0 = src.height[i00] * (1 - tx) + src.height[i10] * tx;
-    const h1 = src.height[i01] * (1 - tx) + src.height[i11] * tx;
-    const z0 = e00 * (1 - tx) + e10 * tx;
-    const z1 = e01 * (1 - tx) + e11 * tx;
-    return { h: h0 * (1 - ty) + h1 * ty, elev: z0 * (1 - ty) + z1 * ty, flat: false };
+    let coveredCount = 0;
+    for (let corner = 0; corner < 4; corner += 1) {
+        if (src.cover[ids[corner]]) coveredCount += 1;
+    }
+    if (coveredCount < 4) {
+        if (!src.cover[ids[nearest]]) return { h: 0, elev: NaN, flat: true, covered: false };
+        const nearestElev = src.elev[ids[nearest]];
+        return {
+            h: src.height[ids[nearest]],
+            elev: Number.isFinite(nearestElev) ? nearestElev : NaN,
+            flat: !Number.isFinite(nearestElev),
+            covered: true,
+        };
+    }
+    let h = 0;
+    let elev = 0;
+    let elevOk = true;
+    for (let corner = 0; corner < 4; corner += 1) {
+        h += src.height[ids[corner]] * weights[corner];
+        const sample = src.elev[ids[corner]];
+        if (!Number.isFinite(sample)) elevOk = false;
+        else elev += sample * weights[corner];
+    }
+    if (!elevOk) return { h, elev: NaN, flat: true, covered: true };
+    return { h, elev, flat: false, covered: true };
 }
 
 function layerShade(view, mx, my, elev) {
@@ -2208,6 +2334,7 @@ function fillLayerMesh(view, win) {
     const nx = win.nx;
     const ny = win.ny;
     const samples = new Float32Array(nx * ny * 6);
+    const cover = new Uint8Array(nx * ny);
     let maxH = 0;
     const halfW = view.widthIn / 2;
     const halfD = view.depthIn / 2;
@@ -2216,8 +2343,9 @@ function fillLayerMesh(view, win) {
             const mx = Math.min(halfW, Math.max(-halfW, win.x0 + i * win.drawStep));
             const my = Math.min(halfD, Math.max(-halfD, win.y0 + j * win.drawStep));
             const sample = sourceSample(view, mx, my);
-            const h = quantizeLayer(sample.h, view.baseIn, view.layerIn);
-            const color = layerColor(view, sample, mx, my);
+            const on = !!sample.covered;
+            const h = on ? quantizeLayer(sample.h, view.baseIn, view.layerIn) : 0;
+            const color = on ? layerColor(view, sample, mx, my) : PLATE_RGB;
             const at = (j * nx + i) * 6;
             samples[at] = mx;
             samples[at + 1] = h;
@@ -2225,7 +2353,8 @@ function fillLayerMesh(view, win) {
             samples[at + 3] = color[0];
             samples[at + 4] = color[1];
             samples[at + 5] = color[2];
-            if (h > maxH) maxH = h;
+            cover[j * nx + i] = on ? 1 : 0;
+            if (on && h > maxH) maxH = h;
         }
     }
     const fullPlate = win.scale > 0.98
@@ -2233,8 +2362,34 @@ function fillLayerMesh(view, win) {
         && Math.abs(win.y0 + halfD) <= win.drawStep;
     const cellsX = nx - 1;
     const cellsY = ny - 1;
-    const wallEdges = fullPlate ? cellsX * 2 + cellsY * 2 : 0;
-    const data = new Float32Array((cellsX * cellsY * 6 + wallEdges * 6) * 6);
+    const quadOn = (i, j) => {
+        if (i < 0 || j < 0 || i >= cellsX || j >= cellsY) return false;
+        return cover[j * nx + i]
+            && cover[j * nx + i + 1]
+            && cover[(j + 1) * nx + i]
+            && cover[(j + 1) * nx + i + 1];
+    };
+    let quads = 0;
+    let walls = 0;
+    for (let j = 0; j < cellsY; j += 1) {
+        for (let i = 0; i < cellsX; i += 1) {
+            if (!quadOn(i, j)) continue;
+            quads += 1;
+            const edge = (ni, nj, tileEdge) => {
+                if (quadOn(ni, nj)) return;
+                if (ni < 0 || nj < 0 || ni >= cellsX || nj >= cellsY) {
+                    if (tileEdge) walls += 1;
+                    return;
+                }
+                walls += 1;
+            };
+            edge(i, j - 1, fullPlate && j === 0);
+            edge(i, j + 1, fullPlate && j === cellsY - 1);
+            edge(i - 1, j, fullPlate && i === 0);
+            edge(i + 1, j, fullPlate && i === cellsX - 1);
+        }
+    }
+    const data = new Float32Array((quads * 6 + walls * 6) * 6);
     let offset = 0;
     const pushAt = (i, j) => {
         const at = (j * nx + i) * 6;
@@ -2256,34 +2411,30 @@ function fillLayerMesh(view, win) {
         data[offset + 5] = WALL_RGB[2];
         offset += 6;
     };
+    const wall = (i0, j0, i1, j1) => {
+        pushBase(i0, j0);
+        pushBase(i1, j1);
+        pushAt(i1, j1);
+        pushBase(i0, j0);
+        pushAt(i1, j1);
+        pushAt(i0, j0);
+    };
     for (let j = 0; j < cellsY; j += 1) {
         for (let i = 0; i < cellsX; i += 1) {
+            if (!quadOn(i, j)) continue;
             pushAt(i, j);
             pushAt(i + 1, j);
             pushAt(i, j + 1);
             pushAt(i + 1, j);
             pushAt(i + 1, j + 1);
             pushAt(i, j + 1);
+            if (!quadOn(i, j - 1) && (j > 0 || (fullPlate && j === 0))) wall(i, j, i + 1, j);
+            if (!quadOn(i, j + 1) && (j + 1 < cellsY || (fullPlate && j === cellsY - 1))) wall(i + 1, j + 1, i, j + 1);
+            if (!quadOn(i - 1, j) && (i > 0 || (fullPlate && i === 0))) wall(i, j + 1, i, j);
+            if (!quadOn(i + 1, j) && (i + 1 < cellsX || (fullPlate && i === cellsX - 1))) wall(i + 1, j, i + 1, j + 1);
         }
     }
-    if (fullPlate) {
-        const wall = (i0, j0, i1, j1) => {
-            pushBase(i0, j0);
-            pushBase(i1, j1);
-            pushAt(i1, j1);
-            pushBase(i0, j0);
-            pushAt(i1, j1);
-            pushAt(i0, j0);
-        };
-        for (let i = 0; i < cellsX; i += 1) {
-            wall(i, 0, i + 1, 0);
-            wall(i + 1, ny - 1, i, ny - 1);
-        }
-        for (let j = 0; j < cellsY; j += 1) {
-            wall(0, j + 1, 0, j);
-            wall(nx - 1, j, nx - 1, j + 1);
-        }
-    }
+    if (offset !== data.length) throw new Error("The print mesh did not match the buffer outline.");
     return { data, count: offset / 6, maxH };
 }
 
@@ -2435,10 +2586,16 @@ function showPrintModel(field) {
     const depthIn = field.rows * field.square_in;
     let minH = Infinity;
     let maxH = -Infinity;
+    const present = (i, j) => {
+        const h = heights[j] && heights[j][i];
+        return Number.isFinite(h) && h > 1e-4;
+    };
     heights.forEach((row) => row.forEach((value) => {
+        if (!Number.isFinite(value) || value <= 1e-4) return;
         minH = Math.min(minH, value);
         maxH = Math.max(maxH, value);
     }));
+    if (!Number.isFinite(minH)) return;
     const span = Math.max(1e-6, maxH - minH);
     const positions = [];
     const colors = [];
@@ -2463,16 +2620,10 @@ function showPrintModel(field) {
             colors.push(vert[3], vert[4], vert[5]);
         });
     };
-    for (let j = 0; j < ny - 1; j += 1) {
-        for (let i = 0; i < nx - 1; i += 1) {
-            const sw = at(i, j);
-            const se = at(i + 1, j);
-            const nw = at(i, j + 1);
-            const ne = at(i + 1, j + 1);
-            tri(sw, se, nw);
-            tri(se, ne, nw);
-        }
-    }
+    const cellsX = nx - 1;
+    const cellsY = ny - 1;
+    const quadOn = (i, j) => i >= 0 && j >= 0 && i < cellsX && j < cellsY
+        && present(i, j) && present(i + 1, j) && present(i, j + 1) && present(i + 1, j + 1);
     const baseOf = (vert) => [vert[0], 0, vert[2], 0.75, 0.73, 0.7];
     const wall = (p, q) => {
         const pb = baseOf(p);
@@ -2480,13 +2631,20 @@ function showPrintModel(field) {
         tri(pb, qb, q);
         tri(pb, q, p);
     };
-    for (let i = 0; i < nx - 1; i += 1) {
-        wall(at(i, 0), at(i + 1, 0));
-        wall(at(i + 1, ny - 1), at(i, ny - 1));
-    }
-    for (let j = 0; j < ny - 1; j += 1) {
-        wall(at(0, j + 1), at(0, j));
-        wall(at(nx - 1, j), at(nx - 1, j + 1));
+    for (let j = 0; j < cellsY; j += 1) {
+        for (let i = 0; i < cellsX; i += 1) {
+            if (!quadOn(i, j)) continue;
+            const sw = at(i, j);
+            const se = at(i + 1, j);
+            const nw = at(i, j + 1);
+            const ne = at(i + 1, j + 1);
+            tri(sw, se, nw);
+            tri(se, ne, nw);
+            if (!quadOn(i, j - 1)) wall(sw, se);
+            if (!quadOn(i, j + 1)) wall(ne, nw);
+            if (!quadOn(i - 1, j)) wall(nw, sw);
+            if (!quadOn(i + 1, j)) wall(se, ne);
+        }
     }
     const vertexSrc = `
         attribute vec3 aPos;
