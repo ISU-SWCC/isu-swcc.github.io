@@ -82,6 +82,11 @@
                         <p class="field-note" id="resolution-note"></p>
                         <label for="dem-ramp">DEM Color Ramp</label>
                         <select id="dem-ramp"></select>
+                        <label id="ramp-scale-label">Color Range</label>
+                        <div class="choices" role="group" aria-labelledby="ramp-scale-label">
+                            <button type="button" id="ramp-conus" aria-pressed="true">CONUS</button>
+                            <button type="button" id="ramp-watershed" aria-pressed="false">Watershed</button>
+                        </div>
                         <p class="field-note" id="ramp-note"></p>
                     </div>
                 </section>
@@ -150,7 +155,7 @@
     </main>
     <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20261013d"></script>
+    <script src="../assets/js/watershed-model.js?v=20261014a"></script>
 </body>
 
 </html>

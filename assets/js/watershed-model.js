@@ -1032,6 +1032,25 @@ function deliveryDays(state) {
     };
 }
 
+function rampRange(book, scale, grid) {
+    const conusLow = book ? Number(book.z_min) : 0;
+    const conusHigh = book ? Number(book.z_max) : 8000;
+    if (scale === "watershed" && grid && grid.max > grid.min) {
+        return { mode: "watershed", low: grid.min, high: grid.max, conusLow, conusHigh };
+    }
+    return { mode: "conus", low: conusLow, high: conusHigh, conusLow, conusHigh };
+}
+
+function scaleRampStops(stops, fromLow, fromHigh, toLow, toHigh) {
+    const fromSpan = fromHigh - fromLow;
+    const toSpan = toHigh - toLow;
+    if (!stops || !(fromSpan > 0) || !(toSpan > 0)) return stops;
+    return stops.map(([elev, color]) => [
+        toLow + ((elev - fromLow) / fromSpan) * toSpan,
+        color,
+    ]);
+}
+
 function reliefColor(elev, stops) {
     if (!stops || !stops.length) return [214, 226, 232];
     if (elev <= stops[0][0]) return stops[0][1];
@@ -1159,7 +1178,15 @@ function orderPayload(state) {
         })(),
         dem_ramp: (() => {
             const chosen = state.rampBook && (state.rampBook.ramps.find((ramp) => ramp.id === state.ramp) || state.rampBook.ramps[0]);
-            return chosen ? { id: chosen.id, label: chosen.label } : null;
+            if (!chosen) return null;
+            const limits = rampRange(state.rampBook, state.rampScale, state.elevGrid);
+            return {
+                id: chosen.id,
+                label: chosen.label,
+                scale: limits.mode,
+                z_min: limits.low,
+                z_max: limits.high,
+            };
         })(),
         quote_complete: missing.length === 0 && Boolean(state.feature) && state.squares.size > 0,
     };
@@ -1919,6 +1946,7 @@ function bootWatershedPage() {
         resolution: DEM_RESOLUTIONS[0],
         resolutionManual: false,
         ramp: "cd-a",
+        rampScale: "conus",
         rampBook: null,
         projection: "utm",
         utmZoneManual: false,
@@ -2048,6 +2076,16 @@ function bootWatershedPage() {
     });
     document.getElementById("dem-ramp").addEventListener("change", (event) => {
         state.ramp = event.target.value;
+        state.reliefImage = null;
+        render();
+    });
+    document.getElementById("ramp-conus").addEventListener("click", () => {
+        state.rampScale = "conus";
+        state.reliefImage = null;
+        render();
+    });
+    document.getElementById("ramp-watershed").addEventListener("click", () => {
+        state.rampScale = "watershed";
         state.reliefImage = null;
         render();
     });
@@ -2398,6 +2436,16 @@ function bootWatershedPage() {
         return book.ramps.find((ramp) => ramp.id === state.ramp) || book.ramps[0];
     }
 
+    function rampLimits() {
+        return rampRange(state.rampBook, state.rampScale, state.elevGrid);
+    }
+
+    function stopsForPaint(ramp) {
+        const limits = rampLimits();
+        if (!ramp || limits.mode !== "watershed") return ramp ? ramp.stops : null;
+        return scaleRampStops(ramp.stops, limits.conusLow, limits.conusHigh, limits.low, limits.high);
+    }
+
     function buildResolutionSelect() {
         const select = document.getElementById("dem-resolution");
         select.innerHTML = DEM_RESOLUTIONS.map((resolution) => (
@@ -2524,12 +2572,27 @@ function bootWatershedPage() {
         const rampOn = state.color === "white" || state.color === "dem";
         rampSelect.disabled = !rampOn;
         if (rampSelect.value !== state.ramp) rampSelect.value = state.ramp;
+        document.getElementById("ramp-conus").disabled = !rampOn;
+        document.getElementById("ramp-watershed").disabled = !rampOn;
+        document.getElementById("ramp-conus").setAttribute("aria-pressed", state.rampScale === "conus" ? "true" : "false");
+        document.getElementById("ramp-watershed").setAttribute("aria-pressed", state.rampScale === "watershed" ? "true" : "false");
         const ramp = activeRamp();
         const rampNote = document.getElementById("ramp-note");
         if (!rampOn) {
             rampNote.textContent = "The color ramp colors the DEM overview and the basin. Satellite and USGS Topo replace that overview.";
         } else if (ramp && state.rampBook) {
-            rampNote.textContent = `${ramp.label} uses the same stops on the overview and the basin, from ${state.rampBook.z_min.toLocaleString("en-US")} to ${state.rampBook.z_max.toLocaleString("en-US")} m. ${state.rampBook.attribution}`;
+            const limits = rampLimits();
+            const conus = `${Math.round(limits.conusLow).toLocaleString("en-US")} to ${Math.round(limits.conusHigh).toLocaleString("en-US")} m`;
+            const credit = state.rampBook.attribution;
+            if (state.rampScale === "watershed" && limits.mode === "watershed") {
+                const low = Math.round(limits.low).toLocaleString("en-US");
+                const high = Math.round(limits.high).toLocaleString("en-US");
+                rampNote.textContent = `${ramp.label} colors this watershed from ${low} to ${high} m. The overview stays on the CONUS limits, ${conus}. ${credit}`;
+            } else if (state.rampScale === "watershed") {
+                rampNote.textContent = `${ramp.label} colors this watershed from its lowest elevation to its highest after the grid loads. The overview stays on the CONUS limits, ${conus}. ${credit}`;
+            } else {
+                rampNote.textContent = `${ramp.label} colors the overview and this watershed on the CONUS limits, ${conus}. ${credit}`;
+            }
         }
         document.getElementById("point-note").textContent = state.rates.delineate_url
             ? "Click the map at the outlet. The delineation service returns the upstream boundary."
@@ -2609,14 +2672,19 @@ function bootWatershedPage() {
         const loadKey = `${id}@${resolution}`;
         if (state.elevGrid && state.elevGrid.key === id && state.elevGrid.resolution_m === resolution) {
             const applied = state.vertical ? state.vertical.applied : state.exaggeration;
+            const limits = rampLimits();
+            const zKey = `${limits.mode}:${limits.low}:${limits.high}`;
             const stale = !ramp
                 || !state.reliefImage
                 || state.reliefImage.ramp !== ramp.id
-                || state.reliefImage.exaggeration !== applied;
+                || state.reliefImage.exaggeration !== applied
+                || state.reliefImage.zKey !== zKey;
             if (!ramp) state.reliefImage = null;
             else if (stale) {
                 try {
-                    state.reliefImage = paintRelief(state.elevGrid, applied, ramp.stops, ramp.id);
+                    state.reliefImage = paintRelief(state.elevGrid, applied, stopsForPaint(ramp), ramp.id);
+                    state.reliefImage.zKey = zKey;
+                    state.reliefImage.scale = limits.mode;
                 } catch (paintError) {
                     state.reliefImage = null;
                 }
@@ -2736,7 +2804,10 @@ function bootWatershedPage() {
         if (state.color === "white" || state.color === "dem") {
             const ramp = activeRamp();
             const rampName = ramp ? ` Colored with ${ramp.label}.` : "";
-            text += ` The base map is a Copernicus DEM overview at about 5 km, for finding the basin.${rampName}`;
+            const range = state.rampScale === "watershed"
+                ? " Basin colors use this watershed's elevation range."
+                : " Basin colors use the CONUS elevation range.";
+            text += ` The base map is a Copernicus DEM overview at about 5 km, for finding the basin.${rampName}${range}`;
         }
         return text;
     }
@@ -2753,6 +2824,7 @@ function bootWatershedPage() {
             alignment: state.alignment,
             color: state.color,
             ramp: state.ramp,
+            rampScale: state.rampScale,
             rampBook: state.rampBook,
             exaggeration: state.exaggeration,
             vertical: state.vertical,
@@ -2779,7 +2851,7 @@ function bootWatershedPage() {
         const printKey = state.printCrs ? state.printCrs.label : "";
         const ramp = activeRamp();
         const rampKey = ramp ? ramp.id : "";
-        const signature = `${styleColor}|${rampKey}|${printKey}|${state.feature ? featureName(state.feature, 0) : ""}|${fit ? `${fit.cols}x${fit.rows}@${fit.rotationDeg}` : ""}|${state.pourPoint}|${state.exaggeration}|${state.reliefImage ? state.reliefImage.exaggeration : ""}|${state.reliefImage ? state.reliefImage.ramp : ""}|${state.elevGrid ? state.elevGrid.key : ""}`;
+        const signature = `${styleColor}|${rampKey}|${state.rampScale}|${state.reliefImage ? state.reliefImage.zKey : ""}|${printKey}|${state.feature ? featureName(state.feature, 0) : ""}|${fit ? `${fit.cols}x${fit.rows}@${fit.rotationDeg}` : ""}|${state.pourPoint}|${state.exaggeration}|${state.reliefImage ? state.reliefImage.exaggeration : ""}|${state.reliefImage ? state.reliefImage.ramp : ""}|${state.elevGrid ? state.elevGrid.key : ""}`;
         if (map._swccSignature === signature) return;
         map._swccSignature = signature;
         const token = (map._swccToken || 0) + 1;
