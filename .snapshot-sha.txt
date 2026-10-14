@@ -1,5 +1,5 @@
-sha: 471b080a7b9cdffb67fe99d458fef8a1e433760a
+sha: 6306bed4968aa15ff4d2c9539a013c732683794a
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-14
-note: The quote adds a 0.5 in watershed buffer (0 to 3 in) and a tile-count base (2 mm plus 0.2 mm per extra tile, 2 to 40 mm). The page shows the model, kit count, shipping, and Ames sales tax unless the group is ISU affiliated. The order file keeps the cost buildup. The page script is watershed-model.js?v=20261014b and the stylesheet is watershed-model.css?v=20261014b.
+note: The page adds Render watershed flow model, sampled at the selected print layer height. On the public site, a basin without a published 30 m or 90 m file opens at 250 m, and those menu rows point to the campus page. Watershed choice is search by name or HUC code. The page script is watershed-model.js?v=20261014e and the stylesheet is watershed-model.css?v=20261014c.
