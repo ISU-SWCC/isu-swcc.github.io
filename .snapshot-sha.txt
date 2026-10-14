@@ -1,5 +1,5 @@
-sha: 6623c85dc17d147a6d800c93135ffdaccfe7a276
+sha: 58d3717a48170f8c4a8967c38d36a9d173cc5340
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
-published: 2026-10-13
-note: A basin under 4,000,000 cells loads when its bounding box is larger, up to 32,000,000 rectangle cells. Copperas-Duck at 30 m is about 2.85 million basin cells in a 17.1 million cell box. A larger box names both counts. A basin over 4,000,000 cells stays unloaded. The public page still reads national 250 m tiles from the unpublished dem-tiles branch. National 90 m and 30 m stay on the campus host.
+published: 2026-10-14
+note: The map stays Web Mercator. UTM, a basin Albers, and CONUS Albers sit on the 3D print model. The basin DEM image is resampled from equal latitude to equal Mercator y. Print squares still use the chosen print CRS. The page script and stylesheet are ?v=20261013d.
