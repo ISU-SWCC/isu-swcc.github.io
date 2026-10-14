@@ -7,7 +7,7 @@
     <title>Watershed Flow Model — Soil and Water Conservation Club</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
     <link href="../assets/vendor/maplibre-gl/maplibre-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="../styles/watershed-model.css?v=20261014b">
+    <link rel="stylesheet" href="../styles/watershed-model.css?v=20261014c">
 </head>
 
 <body>
@@ -35,25 +35,21 @@
                     </div>
                     <p class="size-readout" id="projection-readout"></p>
                     <p class="field-note">The map is Web Mercator. MapLibre cannot draw these basemaps in Albers. UTM uses the zone you choose. Albers is an equal-area projection fit to this basin. CONUS Albers is EPSG:5070. Those choices set the 3D print model. The squares on the map are that model's footprint. The elevation heights stay the same.</p>
+                    <button type="button" class="render-model" id="render-model">Render watershed flow model</button>
                     <canvas id="print-view" hidden aria-label="Print model"></canvas>
-                    <p class="field-note" id="print-status">The 3D model appears here after an order is recorded.</p>
+                    <p class="field-note" id="print-status">Render the watershed flow model to see it here.</p>
                 </div>
             </div>
             <form class="controls" id="model-form">
                 <section class="fold is-open" id="fold-watershed">
                     <h2><button type="button" aria-expanded="true"><span>01</span> Watershed<i class="fold-mark" aria-hidden="true">−</i></button></h2>
                     <div class="fold-body">
-                        <div class="choices" role="group" aria-label="How to choose a watershed">
-                            <button type="button" id="mode-catalog" aria-pressed="true">Boundary Dataset</button>
-                            <button type="button" id="mode-point" aria-pressed="false">Pour Point</button>
-                        </div>
                         <div id="catalog-tools">
                             <label for="basin-search">Search by Name or HUC</label>
                             <input id="basin-search" type="text" autocomplete="off" placeholder="South Skunk or 07080105">
                             <ul class="results" id="basin-results"></ul>
                             <p class="field-note" id="catalog-note"></p>
                         </div>
-                        <p class="field-note" id="point-note" hidden></p>
                     </div>
                 </section>
 
@@ -164,7 +160,7 @@
     </main>
     <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20261014b"></script>
+    <script src="../assets/js/watershed-model.js?v=20261014e"></script>
 </body>
 
 </html>

@@ -19,7 +19,7 @@
     {
       "tag": "Teaching tool",
       "title": "Watershed Flow Model",
-      "description": "A watershed built from 24-inch squares. Choose a basin from the club boundary dataset or a pour point, then the square layout and the surface.",
+      "description": "A watershed built from 24-inch squares. Search for a basin by name or HUC code, then choose the square layout and the surface.",
       "link_label": "Design a model",
       "link_href": "pages/watershed-model.html",
       "image": null

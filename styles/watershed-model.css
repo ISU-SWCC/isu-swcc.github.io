@@ -331,6 +331,22 @@ body {
 
 .print-model .choices { margin: 8px 0; }
 
+.render-model {
+    margin: 8px 0 10px;
+    border: 2px solid #1d1d1f;
+    background: #1d1d1f;
+    color: #fff;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.render-model:disabled {
+    opacity: 0.55;
+    cursor: progress;
+}
+
 @media (max-width: 800px) {
     .model-page h1 { font-size: 32px; }
     .model-layout { grid-template-columns: 1fr; }

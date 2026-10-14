@@ -1590,6 +1590,27 @@ function bakedFileId(id, resolution) {
     return null;
 }
 
+function resolutionAvailable(id, resolution) {
+    if (COARSE_RESOLUTIONS.includes(resolution)) return true;
+    if (bakedFileId(id, resolution)) return true;
+    if (location.protocol === "https:") return HOSTED_RESOLUTIONS.includes(resolution);
+    return FINE_RESOLUTIONS.includes(resolution);
+}
+
+function chooseResolution(feature) {
+    const area = basinAreaM2(feature);
+    const preferred = area ? defaultResolutionM(area) : DEM_RESOLUTIONS[0];
+    const id = feature && feature.properties && feature.properties.id;
+    if (resolutionAvailable(id, preferred)) return preferred;
+    const start = DEM_RESOLUTIONS.indexOf(preferred);
+    for (let index = (start < 0 ? 0 : start) + 1; index < DEM_RESOLUTIONS.length; index += 1) {
+        const resolution = DEM_RESOLUTIONS[index];
+        if (resolution === 5000) break;
+        if (resolutionAvailable(id, resolution)) return resolution;
+    }
+    return preferred;
+}
+
 async function sampleElevations(feature, signal, fileId) {
     const id = feature.properties && feature.properties.id;
     if (!id) throw new Error("no id");
@@ -1882,14 +1903,524 @@ function lookAt4(eye, center, up) {
 }
 
 let printFrame = 0;
+let printGeneration = 0;
+let printViewToken = 0;
+let printViewMark = null;
+let printBuildSignature = null;
+const LAYER_VERTEX_BUDGET = 250000;
+const PLATE_RGB = [214 / 255, 210 / 255, 202 / 255];
+const WALL_RGB = [0.75, 0.73, 0.7];
+
+function viewSignature(state) {
+    const grid = state.elevGrid;
+    const crs = state.printCrs;
+    const feature = state.feature;
+    const id = feature && feature.properties ? feature.properties.id : "";
+    const applied = state.vertical && Number.isFinite(state.vertical.applied)
+        ? state.vertical.applied
+        : state.exaggeration;
+    return [
+        id || "",
+        state.squares ? state.squares.size : 0,
+        state.bufferIn,
+        state.alignment,
+        crs ? crs.label : "",
+        crs && crs.zone ? crs.zone : "",
+        state.resolution,
+        state.color,
+        state.ramp,
+        state.rampScale,
+        applied,
+        state.baseMm,
+        state.grade,
+        grid ? `${grid.key}@${grid.resolution_m}` : "",
+    ].join("|");
+}
+
+function layerViewStatus(layerMm, color) {
+    const mm = Number(layerMm).toFixed(2);
+    let text = `Drag to turn the model. Heights are the print heights, sampled every ${mm} mm.`;
+    if (color === "topo" || color === "satellite") {
+        text += " USGS topo and satellite stay on the map.";
+    }
+    return text;
+}
+
+function clearPrintPointer(canvas) {
+    if (!canvas) return;
+    canvas.onpointerdown = null;
+    canvas.onpointermove = null;
+    canvas.onpointerup = null;
+    if (canvas._printWheel) {
+        canvas.removeEventListener("wheel", canvas._printWheel);
+        canvas._printWheel = null;
+    }
+}
+
+function hidePrintView(message) {
+    printGeneration += 1;
+    printViewToken += 1;
+    printViewMark = null;
+    printBuildSignature = null;
+    if (printFrame) cancelAnimationFrame(printFrame);
+    printFrame = 0;
+    const canvas = document.getElementById("print-view");
+    if (canvas) {
+        canvas.hidden = true;
+        clearPrintPointer(canvas);
+    }
+    const note = document.getElementById("print-status");
+    if (note && message) note.textContent = message;
+}
+
+function syncPrintViewBlank(signature) {
+    if (printViewMark && printViewMark !== signature) {
+        hidePrintView("The settings changed. Render the watershed flow model again.");
+        return;
+    }
+    if (printBuildSignature && printBuildSignature !== signature) {
+        hidePrintView("The settings changed. Render the watershed flow model again.");
+    }
+}
+
+function inPrintLip(mx, my, fit) {
+    const border = fit.borderIn || 0;
+    if (border <= 0) return false;
+    const halfW = fit.outerWidthIn / 2;
+    const halfH = fit.outerHeightIn / 2;
+    return mx <= -halfW + border
+        || mx >= halfW - border
+        || my <= -halfH + border
+        || my >= halfH - border;
+}
+
+function demCellInches(grid, fit) {
+    const west = grid.box[0];
+    const south = grid.box[1];
+    const east = grid.box[2];
+    const north = grid.box[3];
+    const cols = grid.cols;
+    const rows = grid.rows || grid.n;
+    const mid = ((south + north) / 2) * Math.PI / 180;
+    const cellX = ((east - west) * 111320 * Math.cos(mid)) / cols;
+    const cellY = ((north - south) * 110540) / rows;
+    return Math.min(cellX, cellY) / fit.metersPerInch;
+}
+
+function sampleGridElev(grid, lng, lat) {
+    const west = grid.box[0];
+    const south = grid.box[1];
+    const east = grid.box[2];
+    const north = grid.box[3];
+    const cols = grid.cols;
+    const rows = grid.rows || grid.n;
+    const spanX = east - west;
+    const spanY = north - south;
+    if (!(spanX > 0) || !(spanY > 0)) return null;
+    const u = ((lng - west) / spanX) * cols - 0.5;
+    const v = ((lat - south) / spanY) * rows - 0.5;
+    if (u < -0.5 || v < -0.5 || u > cols - 0.5 || v > rows - 0.5) return null;
+    const at = (row, col) => {
+        if (row < 0 || col < 0 || row >= rows || col >= cols) return null;
+        const sample = grid.values[row * cols + col];
+        return sample == null ? null : sample;
+    };
+    const ic = Math.min(cols - 1, Math.max(0, Math.floor(u + 0.5)));
+    const ir = Math.min(rows - 1, Math.max(0, Math.floor(v + 0.5)));
+    const nearest = at(ir, ic);
+    if (nearest == null) return null;
+    const i0 = Math.floor(u);
+    const j0 = Math.floor(v);
+    const v00 = at(j0, i0);
+    const v10 = at(j0, i0 + 1);
+    const v01 = at(j0 + 1, i0);
+    const v11 = at(j0 + 1, i0 + 1);
+    if (v00 == null || v10 == null || v01 == null || v11 == null) return nearest;
+    const tx = u - i0;
+    const ty = v - j0;
+    const low = v00 * (1 - tx) + v10 * tx;
+    const high = v01 * (1 - tx) + v11 * tx;
+    return low * (1 - ty) + high * ty;
+}
+
+function quantizeLayer(totalIn, baseIn, layerIn) {
+    const shownBase = Math.max(layerIn, Math.round(baseIn / layerIn) * layerIn);
+    if (!(totalIn > baseIn + 1e-6)) return shownBase;
+    return shownBase + Math.round(Math.max(0, totalIn - baseIn) / layerIn) * layerIn;
+}
+
+async function buildViewField(form, token, paint) {
+    const grid = form.elevGrid;
+    const fit = form.fit;
+    if (!grid || !fit || !(fit.metersPerInch > 0) || !(paint.layerMm > 0)) return null;
+    const widthIn = fit.outerWidthIn;
+    const depthIn = fit.outerHeightIn;
+    const layerIn = paint.layerMm / MM_PER_IN;
+    const baseIn = (Number(form.baseMm) || 0) / MM_PER_IN;
+    const reliefM = Math.max(0, grid.max - grid.min);
+    const applied = form.vertical && Number.isFinite(form.vertical.applied)
+        ? form.vertical.applied
+        : appliedExaggeration(form.exaggeration, reliefM, fit.metersPerInch, baseIn);
+    let cellIn = demCellInches(grid, fit);
+    if (!(cellIn > 0)) cellIn = Math.max(widthIn, depthIn) / 127;
+    let nx = Math.max(2, Math.round(widthIn / cellIn) + 1);
+    let ny = Math.max(2, Math.round(depthIn / cellIn) + 1);
+    while (nx * ny > 2000000 && (nx > 2 || ny > 2)) {
+        nx = Math.max(2, Math.ceil(nx * 0.7));
+        ny = Math.max(2, Math.ceil(ny * 0.7));
+    }
+    const height = new Float32Array(nx * ny);
+    const elev = new Float32Array(nx * ny);
+    const halfW = widthIn / 2;
+    const halfH = depthIn / 2;
+    const total = nx * ny;
+    for (let cursor = 0; cursor < total; cursor += 25000) {
+        if (token !== printViewToken) return null;
+        const end = Math.min(total, cursor + 25000);
+        for (let index = cursor; index < end; index += 1) {
+            const i = index % nx;
+            const j = (index / nx) | 0;
+            const mx = -halfW + (nx === 1 ? 0 : (i / (nx - 1)) * widthIn);
+            const my = -halfH + (ny === 1 ? 0 : (j / (ny - 1)) * depthIn);
+            if (inPrintLip(mx, my, fit)) {
+                height[index] = baseIn;
+                elev[index] = NaN;
+                continue;
+            }
+            const lnglat = modelInchesToLngLat(mx, my, fit);
+            const sample = sampleGridElev(grid, lnglat[0], lnglat[1]);
+            if (sample == null) {
+                height[index] = baseIn;
+                elev[index] = NaN;
+            } else {
+                height[index] = terrainHeight(sample, grid.min, fit.metersPerInch, applied, baseIn).totalIn;
+                elev[index] = sample;
+            }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    if (token !== printViewToken) return null;
+    return {
+        widthIn,
+        depthIn,
+        layerIn,
+        layerMm: paint.layerMm,
+        baseIn,
+        applied,
+        metersPerInch: fit.metersPerInch,
+        colorMode: paint.colorMode,
+        stops: paint.stops,
+        originX: -halfW,
+        originY: -halfH,
+        source: {
+            nx,
+            ny,
+            stepX: nx === 1 ? widthIn : widthIn / (nx - 1),
+            stepY: ny === 1 ? depthIn : depthIn / (ny - 1),
+            height,
+            elev,
+        },
+    };
+}
+
+function sourceSample(view, mx, my) {
+    const src = view.source;
+    const u = src.nx === 1 ? 0 : ((mx - view.originX) / view.widthIn) * (src.nx - 1);
+    const v = src.ny === 1 ? 0 : ((my - view.originY) / view.depthIn) * (src.ny - 1);
+    const i0 = Math.max(0, Math.min(src.nx - 1, Math.floor(u)));
+    const j0 = Math.max(0, Math.min(src.ny - 1, Math.floor(v)));
+    const i1 = Math.min(src.nx - 1, i0 + 1);
+    const j1 = Math.min(src.ny - 1, j0 + 1);
+    const tx = i0 === i1 ? 0 : Math.max(0, Math.min(1, u - i0));
+    const ty = j0 === j1 ? 0 : Math.max(0, Math.min(1, v - j0));
+    const i00 = j0 * src.nx + i0;
+    const i10 = j0 * src.nx + i1;
+    const i01 = j1 * src.nx + i0;
+    const i11 = j1 * src.nx + i1;
+    const e00 = src.elev[i00];
+    const e10 = src.elev[i10];
+    const e01 = src.elev[i01];
+    const e11 = src.elev[i11];
+    if (!Number.isFinite(e00) || !Number.isFinite(e10) || !Number.isFinite(e01) || !Number.isFinite(e11)) {
+        return { h: view.baseIn, elev: NaN, flat: true };
+    }
+    const h0 = src.height[i00] * (1 - tx) + src.height[i10] * tx;
+    const h1 = src.height[i01] * (1 - tx) + src.height[i11] * tx;
+    const z0 = e00 * (1 - tx) + e10 * tx;
+    const z1 = e01 * (1 - tx) + e11 * tx;
+    return { h: h0 * (1 - ty) + h1 * ty, elev: z0 * (1 - ty) + z1 * ty, flat: false };
+}
+
+function layerShade(view, mx, my, elev) {
+    const east = sourceSample(view, mx + view.source.stepX, my);
+    const north = sourceSample(view, mx, my + view.source.stepY);
+    if (east.flat || north.flat) return 0.78;
+    const dx = view.source.stepX * view.metersPerInch;
+    const dy = view.source.stepY * view.metersPerInch;
+    if (!(dx > 0) || !(dy > 0)) return 0.78;
+    const dzdx = (east.elev - elev) / dx;
+    const dzdy = (north.elev - elev) / dy;
+    return 0.78 + Math.max(-0.28, Math.min(0.28, (dzdx - dzdy) * view.applied * 2));
+}
+
+function layerColor(view, sample, mx, my) {
+    if (view.colorMode !== "ramp" || sample.flat || !view.stops) return PLATE_RGB;
+    const light = layerShade(view, mx, my, sample.elev);
+    const rgb = reliefColor(sample.elev, view.stops);
+    return [
+        Math.max(0, Math.min(255, Math.round(rgb[0] * light))) / 255,
+        Math.max(0, Math.min(255, Math.round(rgb[1] * light))) / 255,
+        Math.max(0, Math.min(255, Math.round(rgb[2] * light))) / 255,
+    ];
+}
+
+function planLayerWindow(view, dolly) {
+    const widthIn = view.widthIn;
+    const depthIn = view.depthIn;
+    const step = view.layerIn;
+    const scale = Math.min(1, Math.max(0.02, dolly));
+    const spanX = widthIn * scale;
+    const spanY = depthIn * scale;
+    let k = 1;
+    const sized = (drawStep) => {
+        const nx = Math.max(2, Math.round(spanX / drawStep) + 1);
+        const ny = Math.max(2, Math.round(spanY / drawStep) + 1);
+        return { nx, ny, n: nx * ny };
+    };
+    let grid = sized(step);
+    while (grid.n > LAYER_VERTEX_BUDGET && k < 100000) {
+        k += 1;
+        grid = sized(step * k);
+    }
+    const drawStep = step * k;
+    const minX = -widthIn / 2;
+    const minY = -depthIn / 2;
+    let x0 = -spanX / 2;
+    let y0 = -spanY / 2;
+    x0 = Math.min(Math.max(x0, minX), Math.max(minX, minX + widthIn - spanX));
+    y0 = Math.min(Math.max(y0, minY), Math.max(minY, minY + depthIn - spanY));
+    x0 = minX + Math.round((x0 - minX) / drawStep) * drawStep;
+    y0 = minY + Math.round((y0 - minY) / drawStep) * drawStep;
+    return { k, drawStep, nx: grid.nx, ny: grid.ny, x0, y0, scale };
+}
+
+function fillLayerMesh(view, win) {
+    const nx = win.nx;
+    const ny = win.ny;
+    const samples = new Float32Array(nx * ny * 6);
+    let maxH = 0;
+    const halfW = view.widthIn / 2;
+    const halfD = view.depthIn / 2;
+    for (let j = 0; j < ny; j += 1) {
+        for (let i = 0; i < nx; i += 1) {
+            const mx = Math.min(halfW, Math.max(-halfW, win.x0 + i * win.drawStep));
+            const my = Math.min(halfD, Math.max(-halfD, win.y0 + j * win.drawStep));
+            const sample = sourceSample(view, mx, my);
+            const h = quantizeLayer(sample.h, view.baseIn, view.layerIn);
+            const color = layerColor(view, sample, mx, my);
+            const at = (j * nx + i) * 6;
+            samples[at] = mx;
+            samples[at + 1] = h;
+            samples[at + 2] = my;
+            samples[at + 3] = color[0];
+            samples[at + 4] = color[1];
+            samples[at + 5] = color[2];
+            if (h > maxH) maxH = h;
+        }
+    }
+    const fullPlate = win.scale > 0.98
+        && Math.abs(win.x0 + halfW) <= win.drawStep
+        && Math.abs(win.y0 + halfD) <= win.drawStep;
+    const cellsX = nx - 1;
+    const cellsY = ny - 1;
+    const wallEdges = fullPlate ? cellsX * 2 + cellsY * 2 : 0;
+    const data = new Float32Array((cellsX * cellsY * 6 + wallEdges * 6) * 6);
+    let offset = 0;
+    const pushAt = (i, j) => {
+        const at = (j * nx + i) * 6;
+        data[offset] = samples[at];
+        data[offset + 1] = samples[at + 1];
+        data[offset + 2] = samples[at + 2];
+        data[offset + 3] = samples[at + 3];
+        data[offset + 4] = samples[at + 4];
+        data[offset + 5] = samples[at + 5];
+        offset += 6;
+    };
+    const pushBase = (i, j) => {
+        const at = (j * nx + i) * 6;
+        data[offset] = samples[at];
+        data[offset + 1] = 0;
+        data[offset + 2] = samples[at + 2];
+        data[offset + 3] = WALL_RGB[0];
+        data[offset + 4] = WALL_RGB[1];
+        data[offset + 5] = WALL_RGB[2];
+        offset += 6;
+    };
+    for (let j = 0; j < cellsY; j += 1) {
+        for (let i = 0; i < cellsX; i += 1) {
+            pushAt(i, j);
+            pushAt(i + 1, j);
+            pushAt(i, j + 1);
+            pushAt(i + 1, j);
+            pushAt(i + 1, j + 1);
+            pushAt(i, j + 1);
+        }
+    }
+    if (fullPlate) {
+        const wall = (i0, j0, i1, j1) => {
+            pushBase(i0, j0);
+            pushBase(i1, j1);
+            pushAt(i1, j1);
+            pushBase(i0, j0);
+            pushAt(i1, j1);
+            pushAt(i0, j0);
+        };
+        for (let i = 0; i < cellsX; i += 1) {
+            wall(i, 0, i + 1, 0);
+            wall(i + 1, ny - 1, i, ny - 1);
+        }
+        for (let j = 0; j < cellsY; j += 1) {
+            wall(0, j + 1, 0, j);
+            wall(nx - 1, j, nx - 1, j + 1);
+        }
+    }
+    return { data, count: offset / 6, maxH };
+}
+
+function showLayerModel(view) {
+    const generation = ++printGeneration;
+    const canvas = document.getElementById("print-view");
+    const note = document.getElementById("print-status");
+    if (!canvas) return;
+    canvas.hidden = false;
+    if (printFrame) cancelAnimationFrame(printFrame);
+    clearPrintPointer(canvas);
+    const gl = canvas.getContext("webgl", { antialias: true, preserveDrawingBuffer: true });
+    if (!gl) {
+        if (note) note.textContent = "This browser has no WebGL view of the print model.";
+        return;
+    }
+    const vertexSrc = `
+        attribute vec3 aPos;
+        attribute vec3 aColor;
+        uniform mat4 uMvp;
+        varying vec3 vColor;
+        void main() {
+            vColor = aColor;
+            gl_Position = uMvp * vec4(aPos, 1.0);
+        }`;
+    const fragmentSrc = `
+        precision mediump float;
+        varying vec3 vColor;
+        void main() {
+            gl_FragColor = vec4(vColor, 1.0);
+        }`;
+    const compile = (type, source) => {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        return shader;
+    };
+    const program = gl.createProgram();
+    gl.attachShader(program, compile(gl.VERTEX_SHADER, vertexSrc));
+    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragmentSrc));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        if (note) note.textContent = "This browser has no WebGL view of the print model.";
+        return;
+    }
+    gl.useProgram(program);
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    const stride = 24;
+    const posLoc = gl.getAttribLocation(program, "aPos");
+    const colorLoc = gl.getAttribLocation(program, "aColor");
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(colorLoc);
+    gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, stride, 12);
+    gl.enable(gl.DEPTH_TEST);
+    gl.clearColor(0.957, 0.957, 0.957, 1);
+    const mvpLoc = gl.getUniformLocation(program, "uMvp");
+    let dolly = 1;
+    let yaw = 0.7;
+    let polar = 1.05;
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let meshKey = "";
+    let count = 0;
+    let maxH = view.baseIn;
+    const rebuild = () => {
+        const win = planLayerWindow(view, dolly);
+        const key = [win.k, win.nx, win.ny, win.x0.toFixed(3), win.y0.toFixed(3)].join(":");
+        if (key === meshKey) return;
+        meshKey = key;
+        const built = fillLayerMesh(view, win);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, built.data, gl.STATIC_DRAW);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, stride, 0);
+        gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, stride, 12);
+        count = built.count;
+        maxH = built.maxH;
+    };
+    canvas.onpointerdown = (event) => {
+        dragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        canvas.setPointerCapture(event.pointerId);
+    };
+    canvas.onpointermove = (event) => {
+        if (!dragging) return;
+        yaw += (event.clientX - lastX) * 0.01;
+        polar = Math.min(1.4, Math.max(0.2, polar + (event.clientY - lastY) * 0.01));
+        lastX = event.clientX;
+        lastY = event.clientY;
+    };
+    canvas.onpointerup = () => {
+        dragging = false;
+    };
+    const onWheel = (event) => {
+        event.preventDefault();
+        dolly = Math.min(1, Math.max(0.02, dolly * (event.deltaY > 0 ? 1.12 : 0.89)));
+        rebuild();
+    };
+    canvas._printWheel = onWheel;
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    rebuild();
+    const draw = () => {
+        if (generation !== printGeneration) return;
+        const width = Math.max(1, canvas.clientWidth);
+        const height = Math.max(1, canvas.clientHeight);
+        const ratio = window.devicePixelRatio || 1;
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        const radius = Math.max(view.widthIn, view.depthIn) * 0.95 * dolly;
+        const eye = [
+            radius * Math.sin(polar) * Math.sin(yaw),
+            Math.cos(polar) * radius * 0.55 + maxH,
+            radius * Math.sin(polar) * Math.cos(yaw),
+        ];
+        const viewMatrix = lookAt4(eye, [0, maxH * 0.5, 0], [0, 1, 0]);
+        const projection = perspective4(0.65, canvas.width / canvas.height, Math.max(0.05, radius * 0.01), radius * 8 + view.widthIn);
+        gl.uniformMatrix4fv(mvpLoc, false, new Float32Array(multiply4(projection, viewMatrix)));
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, count);
+        printFrame = requestAnimationFrame(draw);
+    };
+    draw();
+}
 
 function showPrintModel(field) {
+    const generation = ++printGeneration;
     const panel = document.getElementById("print-model");
     const canvas = document.getElementById("print-view");
     const note = document.getElementById("print-status");
     if (!panel || !canvas) return;
     panel.hidden = false;
     canvas.hidden = false;
+    clearPrintPointer(canvas);
     if (printFrame) cancelAnimationFrame(printFrame);
     const gl = canvas.getContext("webgl", { antialias: true, preserveDrawingBuffer: true });
     if (!gl) {
@@ -1916,13 +2447,14 @@ function showPrintModel(field) {
         const baseCut = Number(field.base_in);
         const flatAt = (Number.isFinite(baseCut) ? baseCut : 2.6 / MM_PER_IN) + 0.01;
         const tone = h <= flatAt ? 0 : (h - minH) / span;
+        const painted = field.colors && field.colors[j] && field.colors[j][i];
         return [
             (i / (nx - 1) - 0.5) * widthIn,
             h,
             (j / (ny - 1) - 0.5) * depthIn,
-            h <= flatAt ? 0.78 : 0.42 + 0.34 * tone,
-            h <= flatAt ? 0.76 : 0.36 + 0.08 * (1 - tone),
-            h <= flatAt ? 0.72 : 0.22,
+            painted ? painted[0] : (h <= flatAt ? 0.78 : 0.42 + 0.34 * tone),
+            painted ? painted[1] : (h <= flatAt ? 0.76 : 0.36 + 0.08 * (1 - tone)),
+            painted ? painted[2] : (h <= flatAt ? 0.72 : 0.22),
         ];
     };
     const tri = (a, b, c) => {
@@ -2027,6 +2559,7 @@ function showPrintModel(field) {
         dragging = false;
     };
     const draw = () => {
+        if (generation !== printGeneration) return;
         const width = Math.max(1, canvas.clientWidth);
         const height = Math.max(1, canvas.clientHeight);
         const ratio = window.devicePixelRatio || 1;
@@ -2101,7 +2634,6 @@ function bootWatershedPage() {
     };
 
     let map = null;
-    let marker = null;
     try {
         map = new maplibregl.Map({
             container: "map",
@@ -2120,7 +2652,6 @@ function bootWatershedPage() {
         } catch (error) {
             console.error(error);
         }
-        map.on("click", onMapClick);
     }
 
     loadMenu().catch((error) => console.error(error));
@@ -2166,8 +2697,6 @@ function bootWatershedPage() {
         console.error(error);
     });
 
-    document.getElementById("mode-catalog").addEventListener("click", () => setMode("catalog"));
-    document.getElementById("mode-point").addEventListener("click", () => setMode("point"));
     document.getElementById("basin-search").addEventListener("input", (event) => renderResults(event.target.value));
     document.getElementById("square-count").addEventListener("input", (event) => {
         const next = Math.floor(finite(event.target.value) || 1);
@@ -2283,6 +2812,63 @@ function bootWatershedPage() {
             syncOrderButton();
         });
     });
+    document.getElementById("render-model").addEventListener("click", () => {
+        renderWatershed().catch((error) => {
+            console.error(error);
+            const status = document.getElementById("print-status");
+            if (status) status.textContent = "The watershed view could not be rendered.";
+            const button = document.getElementById("render-model");
+            if (button) button.disabled = false;
+        });
+    });
+
+    async function renderWatershed() {
+        const button = document.getElementById("render-model");
+        const note = document.getElementById("print-status");
+        const form = readForm();
+        if (!form.elevGrid || !form.fit) {
+            const canvas = document.getElementById("print-view");
+            if (canvas) canvas.hidden = true;
+            if (note) note.textContent = "The elevation has not loaded, so there is nothing to render.";
+            return;
+        }
+        const grade = form.rates && form.rates.print && form.rates.print.grades
+            ? form.rates.print.grades[form.grade]
+            : null;
+        const layerMm = grade ? Number(grade.layer_mm) : NaN;
+        if (!(layerMm > 0)) {
+            if (note) note.textContent = "Choose a print quality before rendering.";
+            return;
+        }
+        const signature = viewSignature(state);
+        const token = ++printViewToken;
+        printBuildSignature = signature;
+        if (button) button.disabled = true;
+        if (note) note.textContent = `Rendering the ${layerMm.toFixed(2)} mm surface.`;
+        try {
+            const ramp = activeRamp();
+            const colored = state.color === "dem" || state.color === "white";
+            const field = await buildViewField(form, token, {
+                layerMm,
+                colorMode: colored ? "ramp" : "plain",
+                stops: colored && ramp ? stopsForPaint(ramp) : null,
+            });
+            if (token !== printViewToken || !field) return;
+            if (viewSignature(state) !== signature) {
+                hidePrintView("The settings changed. Render the watershed flow model again.");
+                return;
+            }
+            printBuildSignature = null;
+            printViewMark = signature;
+            showLayerModel(field);
+            if (note) note.textContent = layerViewStatus(layerMm, state.color);
+        } catch (error) {
+            console.error(error);
+            if (token === printViewToken && note) note.textContent = "The watershed view could not be rendered.";
+        } finally {
+            if (button) button.disabled = false;
+        }
+    }
 
     function buildPrintControls() {
         const spec = (state.rates && state.rates.print) || {};
@@ -2336,41 +2922,6 @@ function bootWatershedPage() {
                 apply();
                 input.value = String(state.kitQty[input.dataset.kit]);
             });
-        });
-    }
-
-    function setMode(mode) {
-        state.method = mode;
-        document.getElementById("mode-catalog").setAttribute("aria-pressed", mode === "catalog" ? "true" : "false");
-        document.getElementById("mode-point").setAttribute("aria-pressed", mode === "point" ? "true" : "false");
-        document.getElementById("catalog-tools").hidden = mode !== "catalog";
-        document.getElementById("point-note").hidden = mode !== "point";
-        render();
-    }
-
-    function onMapClick(event) {
-        if (state.method !== "point" || !state.rates) return;
-        state.pourPoint = [event.lngLat.lng, event.lngLat.lat];
-        if (!state.rates.delineate_url) {
-            state.feature = null;
-            render();
-            return;
-        }
-        fetch(state.rates.delineate_url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ lng: state.pourPoint[0], lat: state.pourPoint[1] }),
-        }).then((response) => {
-            if (!response.ok) throw new Error(String(response.status));
-            return response.json();
-        }).then((body) => {
-            const feature = body.type === "Feature" ? body : (body.features && body.features[0]);
-            if (!feature || !feature.geometry) throw new Error("no polygon");
-            adoptFeature(feature);
-        }).catch(() => {
-            state.feature = null;
-            document.getElementById("point-note").textContent = "The delineation service did not return a boundary.";
-            render();
         });
     }
 
@@ -2645,11 +3196,21 @@ function bootWatershedPage() {
 
     function syncResolution() {
         if (!state.resolutionManual && state.feature) {
-            const area = basinAreaM2(state.feature);
-            if (area) state.resolution = defaultResolutionM(area);
+            state.resolution = chooseResolution(state.feature);
         }
         const select = document.getElementById("dem-resolution");
-        if (select && select.value !== String(state.resolution)) select.value = String(state.resolution);
+        const basinId = state.feature && state.feature.properties && state.feature.properties.id;
+        if (select) {
+            const onPublic = location.protocol === "https:";
+            select.querySelectorAll("option").forEach((option) => {
+                const resolution = Number(option.value);
+                const onSite = resolution === 5000 || resolutionAvailable(basinId, resolution);
+                option.disabled = !onSite;
+                const label = `${resolutionLabel(resolution)}${onPublic && !onSite ? ", campus page" : ""}`;
+                if (option.textContent !== label) option.textContent = label;
+            });
+            if (select.value !== String(state.resolution)) select.value = String(state.resolution);
+        }
         const note = document.getElementById("resolution-note");
         if (!note) return;
         const area = basinAreaM2(state.feature);
@@ -2662,16 +3223,27 @@ function bootWatershedPage() {
         let text = `${resolutionLabel(state.resolution)} is about ${cells.toLocaleString("en-US")} cells.`;
         if (state.resolution === fallback) {
             text += " This default keeps the grid near 100,000 to 1,000,000 cells.";
+        } else if (!resolutionAvailable(basinId, fallback)) {
+            const held = [30, 90].filter((resolution) => !resolutionAvailable(basinId, resolution));
+            const names = held.map(resolutionLabel).join(" and ");
+            const noun = held.length === 1 ? "grid" : "grids";
+            const verb = held.length === 1 ? "is" : "are";
+            text += ` The ${names} ${noun} for this basin ${verb} on the campus order page at http://EL4352-WS.iastate.edu:8080/pages/watershed-model.html.`;
+            if (resolutionAvailable(basinId, state.resolution)) {
+                text += ` This page uses ${resolutionLabel(state.resolution)}.`;
+            }
         } else {
             text += ` The default for this basin is ${resolutionLabel(fallback)}.`;
         }
-        const basinId = state.feature && state.feature.properties && state.feature.properties.id;
         const published = state.elevGrid && state.elevGrid.key === basinId ? state.elevGrid.resolution_m : null;
         if (published && published !== state.resolution) {
             text += ` The preview uses the published ${resolutionLabel(published)} sample.`;
         }
         if (cells > BASIN_CELL_CAP) {
             text += " A bake above 4,000,000 cells uses a coarser grid.";
+        }
+        if (state.elevMiss === basinId && state.elevMissResolution === state.resolution && state.elevMissText) {
+            text += ` ${state.elevMissText}`;
         }
         const bakedHere = Boolean(bakedFileId(
             state.feature && state.feature.properties && state.feature.properties.id,
@@ -2761,9 +3333,6 @@ function bootWatershedPage() {
                 rampNote.textContent = `${ramp.label} colors the overview and this watershed on the CONUS limits, ${conus}. ${credit}`;
             }
         }
-        document.getElementById("point-note").textContent = state.rates.delineate_url
-            ? "Click the map at the outlet. The delineation service returns the upstream boundary."
-            : "Click the map to save a pour point. The boundary appears after a delineation service is connected. Until then, use the boundary dataset.";
         const fit = state.fit;
         if (!fit) {
             document.getElementById("size-readout").textContent = "Choose a basin to size the squares.";
@@ -2785,6 +3354,7 @@ function bootWatershedPage() {
         renderQuote();
         ensureElevation();
         drawMap();
+        syncPrintViewBlank(viewSignature(state));
     }
 
     function renderVertical() {
@@ -2862,6 +3432,7 @@ function bootWatershedPage() {
             }
             return;
         }
+        if (state.elevMiss === id && state.elevMissResolution === resolution) return;
         if (state.elevLoading === loadKey) return;
         if (state.elevAbort) state.elevAbort.abort();
         const controller = new AbortController();
@@ -2904,16 +3475,15 @@ function bootWatershedPage() {
             state.reliefImage = null;
             state.elevMiss = id;
             state.elevMissResolution = resolution;
-            if (note) {
-                const limited = gridLimitText(error, resolution);
-                if (limited) note.textContent = limited;
-                else if (error && error.message === "https-fine") {
-                    note.textContent = `The ${resolutionLabel(resolution)} grid for this basin is not on the public site. The map still shows the 5 km DEM overview.`;
-                } else {
-                    note.textContent = missingGridText();
-                }
-                state.elevMissText = note.textContent;
+            const limited = gridLimitText(error, resolution);
+            if (limited) state.elevMissText = limited;
+            else if (error && error.message === "https-fine") {
+                state.elevMissText = `The ${resolutionLabel(resolution)} grid for this basin is not on the public site. The map still shows the 5 km DEM overview.`;
+            } else {
+                state.elevMissText = missingGridText();
             }
+            if (note) note.textContent = state.elevMissText;
+            render();
         });
     }
 
@@ -2934,19 +3504,22 @@ function bootWatershedPage() {
         document.getElementById("quote").innerHTML = rows + total;
         syncOrderButton();
         const ship = estimate.ship;
+        const basinId = state.feature && state.feature.properties && state.feature.properties.id;
         let eta = "The estimate appears after the elevation loads.";
         if (estimate.ready) {
             const hours = `Print time is about ${estimate.hours.toFixed(1)} hours.`;
             eta = !ship || ship.amount == null
                 ? `${hours} Shipping needs a US ZIP Code.`
                 : `${hours} Ships from Ames to ${ship.zip}, about ${ship.days} business days.`;
+        } else if (state.elevMissText && state.elevMiss === basinId && state.elevMissResolution === state.resolution) {
+            eta = state.elevMissText;
         }
         document.getElementById("eta").textContent = eta;
         if (map) document.getElementById("map-note").textContent = mapCaption();
     }
 
     function mapCaption() {
-        if (!state.feature) return "Choose a basin, or save a pour point.";
+        if (!state.feature) return "Choose a basin.";
         const props = state.feature.properties || {};
         const name = featureName(state.feature, 0);
         let text;
@@ -2974,6 +3547,9 @@ function bootWatershedPage() {
                 ? " Basin colors use this watershed's elevation range."
                 : " Basin colors use the CONUS elevation range.";
             text += ` The base map is a Copernicus DEM overview at about 5 km, for finding the basin.${rampName}${range}`;
+        }
+        if (state.elevMiss === id && state.elevMissResolution === state.resolution && state.elevMissText) {
+            text += ` ${state.elevMissText}`;
         }
         return text;
     }
@@ -3099,10 +3675,6 @@ function bootWatershedPage() {
                 });
                 document.getElementById("map").dataset.basin = "shown";
             }
-            if (marker) marker.remove();
-            if (state.pourPoint) {
-                marker = new maplibregl.Marker({ color: "#C8102E" }).setLngLat(state.pourPoint).addTo(map);
-            }
             const bounds = new maplibregl.LngLatBounds();
             squareFeatures.forEach((feature) => feature.geometry.coordinates[0].forEach((coord) => bounds.extend(coord)));
             if (state.feature) {
@@ -3171,6 +3743,7 @@ function bootWatershedPage() {
         const preview = await fetch(`/print-preview/${accepted.id}.json`, { cache: "no-store" });
         if (!preview.ok) throw new Error(String(preview.status));
         showPrintModel(await preview.json());
+        printViewMark = viewSignature(state);
         state.orderBusy = false;
         syncOrderButton();
     }
