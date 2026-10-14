@@ -316,6 +316,10 @@ body {
     touch-action: none;
 }
 
+#print-view[hidden] { display: none; }
+
+.print-model .choices { margin: 8px 0; }
+
 @media (max-width: 800px) {
     .model-page h1 { font-size: 32px; }
     .model-layout { grid-template-columns: 1fr; }

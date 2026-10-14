@@ -1470,6 +1470,50 @@ async function sampleElevations(feature, signal, fileId) {
     };
 }
 
+function mercatorY(latDeg) {
+    const phi = latDeg * Math.PI / 180;
+    return Math.log(Math.tan(Math.PI / 4 + phi / 2));
+}
+
+function mercatorLat(y) {
+    return (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI;
+}
+
+function warpLatitudeImageToMercator(source, south, north) {
+    const width = source.width;
+    const height = source.height;
+    const spanLat = north - south;
+    if (!(Math.abs(spanLat) > 1e-8) || height < 2) return source;
+    const src = source.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, width, height);
+    const dest = document.createElement("canvas");
+    dest.width = width;
+    dest.height = height;
+    const dstCtx = dest.getContext("2d");
+    const image = dstCtx.createImageData(width, height);
+    const yNorth = mercatorY(north);
+    const spanY = mercatorY(south) - yNorth;
+    if (!(Math.abs(spanY) > 1e-12)) return source;
+    for (let row = 0; row < height; row += 1) {
+        const lat = mercatorLat(yNorth + ((row + 0.5) / height) * spanY);
+        const sourceRow = Math.max(0, Math.min(height - 1, ((north - lat) / spanLat) * height - 0.5));
+        const row0 = Math.floor(sourceRow);
+        const row1 = Math.min(height - 1, row0 + 1);
+        const frac = sourceRow - row0;
+        for (let col = 0; col < width; col += 1) {
+            const destPx = (row * width + col) * 4;
+            const low = (row0 * width + col) * 4;
+            const high = (row1 * width + col) * 4;
+            for (let channel = 0; channel < 4; channel += 1) {
+                image.data[destPx + channel] = Math.round(
+                    src.data[low + channel] * (1 - frac) + src.data[high + channel] * frac,
+                );
+            }
+        }
+    }
+    dstCtx.putImageData(image, 0, 0);
+    return dest;
+}
+
 function paintRelief(grid, exaggeration, stops, rampId) {
     const rows = grid.rows || grid.n;
     const cols = grid.cols || grid.n;
@@ -1510,9 +1554,12 @@ function paintRelief(grid, exaggeration, stops, rampId) {
     sample.width = cols;
     sample.height = rows;
     sample.getContext("2d").putImageData(image, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(sample, 0, 0, canvas.width, canvas.height);
     const [west, south, east, north] = grid.box;
+    // The grid rows are equally spaced in latitude. MapLibre stretches an
+    // image linearly in Web Mercator, so resample before placing the corners.
+    const placed = warpLatitudeImageToMercator(sample, south, north);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(placed, 0, 0, canvas.width, canvas.height);
     return {
         url: canvas.toDataURL("image/png"),
         coordinates: [[west, north], [east, north], [east, south], [west, south]],
@@ -1693,6 +1740,7 @@ function showPrintModel(field) {
     const note = document.getElementById("print-status");
     if (!panel || !canvas) return;
     panel.hidden = false;
+    canvas.hidden = false;
     if (printFrame) cancelAnimationFrame(printFrame);
     const gl = canvas.getContext("webgl", { antialias: true, preserveDrawingBuffer: true });
     if (!gl) {
@@ -2316,17 +2364,17 @@ function bootWatershedPage() {
         }
         const note = document.getElementById("projection-readout");
         if (!crs) {
-            note.textContent = "Choose a basin to set the print projection.";
+            note.textContent = "Choose a basin to set the 3D print projection. The map stays Web Mercator.";
             return;
         }
         const grid = state.elevGrid;
         const matched = grid && grid.crs && sameCrs(crs, grid.crs);
         if (matched && grid.resolution_m) {
-            note.textContent = `Print projection: ${crs.label}.`;
+            note.textContent = `3D print projection: ${crs.label}. The map is Web Mercator.`;
             return;
         }
         const sample = grid && grid.resolution_m ? ` Elevation sample: ${grid.resolution_m} m.` : "";
-        note.textContent = `Print projection: ${crs.label}.${sample} The squares refit in this projection.`;
+        note.textContent = `3D print projection: ${crs.label}.${sample} The map is Web Mercator. The squares are this model's footprint.`;
     }
 
     function renderLayout() {
