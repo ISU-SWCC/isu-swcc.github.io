@@ -200,7 +200,7 @@
     ],
     "basis": "UPS Ground published daily rates, effective 22 December 2025. Zones are straight-line miles from Ames: 150, 300, 600, 1000, 1400, and 1800. The billable weight is the greater of scale weight and length times width times height divided by 139, rounded up. Weights between published breaks are interpolated. Above 50 lb the 30-to-50 lb slope is extended. Residential and oversize surcharges are not included."
   },
-  "kits_intro": "Add any number of each kit. The kit price is the sum of its materials.",
+  "kits_intro": "Add any number of each kit. The quote shows how many kits are included.",
   "kits": [
     {
       "id": "practice",

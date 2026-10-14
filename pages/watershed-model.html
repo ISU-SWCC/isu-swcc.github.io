@@ -7,7 +7,7 @@
     <title>Watershed Flow Model — Soil and Water Conservation Club</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
     <link href="../assets/vendor/maplibre-gl/maplibre-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="../styles/watershed-model.css?v=20261013d">
+    <link rel="stylesheet" href="../styles/watershed-model.css?v=20261014b">
 </head>
 
 <body>
@@ -62,13 +62,15 @@
                     <div class="fold-body">
                         <label for="square-count">Number of 24-Inch Squares</label>
                         <input id="square-count" type="number" min="1" max="100" step="1" value="4">
+                        <label for="buffer-in">Buffer around the Watershed (in)</label>
+                        <input id="buffer-in" type="number" min="0" max="3" step="0.1" value="0.5">
                         <div class="choices" role="group" aria-label="How the basin sits in the squares">
                             <button type="button" id="align-north" aria-pressed="true">True North</button>
                             <button type="button" id="align-max" aria-pressed="false">Largest Fit</button>
                         </div>
                         <p class="size-readout" id="size-readout"></p>
                         <div class="painter" id="painter" aria-hidden="true"></div>
-                        <p class="field-note">The basin is scaled to fit those squares. One square uses the full 24 by 24 inches. With more than one square, a 1/2 inch border is left around the outside so the squares can lock. True north keeps north at the top of the model. Largest fit turns the model so the basin prints as large as it can.</p>
+                        <p class="field-note">The basin is scaled inside a buffer on the 24 by 24 inch squares. The buffer defaults to 0.5 in and can be set from 0 to 3 in. True north keeps north at the top of the model. Largest fit turns the model so the basin prints as large as it can.</p>
                     </div>
                 </section>
 
@@ -96,7 +98,9 @@
                     <div class="fold-body">
                         <label for="exaggeration">Exaggeration</label>
                         <input id="exaggeration" type="number" min="0" max="100" step="0.1" value="1">
-                        <p class="field-note">1 matches the horizontal scale. Less than 1 is flatter. More than 1 is steeper. Every point is at least 0.5 in thick. Nothing is taller than 18 in.</p>
+                        <label for="base-mm">Base Thickness (mm)</label>
+                        <input id="base-mm" type="number" min="2" max="40" step="0.1" value="2.6">
+                        <p class="field-note">1 matches the horizontal scale. Less than 1 is flatter. More than 1 is steeper. The base defaults to 2 mm for one tile plus 0.2 mm for each additional tile. One hundred tiles is 21.8 mm. Changing the tile count updates the base until you type one of your own. The base can be set from 2 to 40 mm. Nothing is taller than 18 in.</p>
                         <p class="size-readout" id="vert-readout"></p>
                     </div>
                 </section>
@@ -124,6 +128,11 @@
                 <section class="fold" id="fold-delivery">
                     <h2><button type="button" aria-expanded="false"><span>07</span> Delivery<i class="fold-mark" aria-hidden="true">+</i></button></h2>
                     <div class="fold-body">
+                        <label class="check" for="isu-affiliated">
+                            <input id="isu-affiliated" type="checkbox">
+                            ISU affiliated group, no sales tax
+                        </label>
+                        <p class="field-note">Other orders add the Ames sales tax, 7 percent. That is Iowa's 6 percent plus the Story County 1 percent local option, on the model and kits. Shipping is not taxed.</p>
                         <label for="country">Country</label>
                         <input id="country" type="text" value="US" autocomplete="country">
                         <label for="region">State or Region</label>
@@ -155,7 +164,7 @@
     </main>
     <script src="../assets/vendor/maplibre-gl/maplibre-gl.js"></script>
     <script src="../assets/js/site.js"></script>
-    <script src="../assets/js/watershed-model.js?v=20261014a"></script>
+    <script src="../assets/js/watershed-model.js?v=20261014b"></script>
 </body>
 
 </html>

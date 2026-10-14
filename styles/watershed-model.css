@@ -158,6 +158,17 @@ body {
     margin: 14px 0 6px;
 }
 
+.controls label.check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.controls label.check input {
+    width: auto;
+    margin-top: 2px;
+}
+
 .controls input[type="text"],
 .controls input[type="number"],
 .controls select {

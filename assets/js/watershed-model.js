@@ -467,7 +467,7 @@ function outlinePoints(outline) {
     return points;
 }
 
-function fitSquares(feature, count, alignment, outline, crs) {
+function fitSquares(feature, count, alignment, outline, crs, bufferIn) {
     const n = Math.max(1, Math.min(100, Math.floor(count) || 1));
     let lng0;
     let lat0;
@@ -489,7 +489,7 @@ function fitSquares(feature, count, alignment, outline, crs) {
         lat0 = local.lat0;
         points = local.points;
     }
-    const border = n > 1 ? 0.5 : 0;
+    const border = clampBufferIn(bufferIn);
     const angles = alignment === "max" ? Array.from({ length: 180 }, (_, index) => index) : [0];
     let best = null;
     angles.forEach((deg) => {
@@ -660,7 +660,38 @@ function basinCoverage(feature, keys, scale) {
 
 const CUBIC_INCH_CM3 = 16.387064;
 const LB_PER_KG = 2.2046226218;
+const MM_PER_IN = 25.4;
+const MODEL_MAX_IN = 18;
+const AMES_TAX_RATE = 0.07;
+const AMES_STATE_RATE = 0.06;
+const AMES_LOCAL_RATE = 0.01;
 const ZONE_DAYS = { 2: "1–2", 3: "2", 4: "2–3", 5: "3", 6: "3–4", 7: "4", 8: "4–5" };
+
+function defaultBaseMm(tileCount) {
+    const count = Math.max(1, Math.min(100, Math.floor(Number(tileCount)) || 1));
+    const mm = 2 + 0.2 * (count - 1);
+    return Math.min(40, Math.max(2, Math.round(mm * 10) / 10));
+}
+
+function clampBaseMm(value, tileCount) {
+    if (value == null || String(value).trim() === "") return defaultBaseMm(tileCount);
+    const next = Number(value);
+    if (!Number.isFinite(next)) return defaultBaseMm(tileCount);
+    return Math.min(40, Math.max(2, next));
+}
+
+function clampBufferIn(value) {
+    if (value == null || String(value).trim() === "") return 0.5;
+    const next = Number(value);
+    if (!Number.isFinite(next)) return 0.5;
+    return Math.min(3, Math.max(0, next));
+}
+
+function moneyCents(amount) {
+    if (!Number.isFinite(amount)) return null;
+    const sign = amount < 0 ? -1 : 1;
+    return sign * Math.round(Math.abs(amount) * 100) / 100;
+}
 
 function padZip(value) {
     const digits = String(value || "").replace(/\D/g, "");
@@ -799,13 +830,15 @@ function squarePeaks(grid, fit) {
     return peaks;
 }
 
-function stackInches(grid, fit, exaggeration) {
+function stackInches(grid, fit, exaggeration, baseIn) {
     if (!grid || !fit || !fit.squares || !fit.squares.size || !(fit.metersPerInch > 0)) return null;
+    const slab = Number(baseIn);
+    const base = Number.isFinite(slab) && slab >= 0 ? slab : 0;
     const peaks = squarePeaks(grid, fit);
     let total = 0;
     peaks.forEach((elev) => {
         const rise = elev == null ? 0 : Math.max(0, elev - grid.min) / fit.metersPerInch * (Number(exaggeration) || 0);
-        total += 0.5 + rise;
+        total += base + rise;
     });
     return total;
 }
@@ -857,7 +890,7 @@ function kitUnitPrice(kit) {
     return (kit.materials || []).reduce((sum, item) => sum + (finite(item.price) || 0), 0);
 }
 
-function meanHeightIn(grid, fit, exaggeration) {
+function meanRiseIn(grid, fit, exaggeration) {
     if (!grid || !fit || !(fit.metersPerInch > 0) || !grid.values) return null;
     let sum = 0;
     let count = 0;
@@ -867,8 +900,7 @@ function meanHeightIn(grid, fit, exaggeration) {
         count += 1;
     });
     if (!count) return null;
-    const rise = Math.max(0, (sum / count) - grid.min) / fit.metersPerInch * (Number(exaggeration) || 0);
-    return 0.5 + rise;
+    return Math.max(0, (sum / count) - grid.min) / fit.metersPerInch * (Number(exaggeration) || 0);
 }
 
 function printEstimate(state) {
@@ -876,12 +908,9 @@ function printEstimate(state) {
     const material = spec && spec.materials ? spec.materials[state.material] : null;
     const grade = spec && spec.grades ? spec.grades[state.grade] : null;
     const squares = state.squares ? state.squares.size : 0;
-    const height = meanHeightIn(
-        state.elevGrid,
-        state.fit,
-        state.vertical ? state.vertical.applied : state.exaggeration,
-    );
-    if (!spec || !material || !grade || !squares || height == null) return { ready: false };
+    const appliedEarly = state.vertical ? state.vertical.applied : state.exaggeration;
+    const riseIn = meanRiseIn(state.elevGrid, state.fit, appliedEarly);
+    if (!spec || !material || !grade || !squares || riseIn == null) return { ready: false };
     const infill = finite(spec.infill);
     const density = finite(material.density_g_cm3);
     const price = finite(material.usd_per_kg);
@@ -899,9 +928,23 @@ function printEstimate(state) {
     const profit = finite(spec.profit);
     const numbers = [infill, density, price, flow, square, life, printer, power, energy, wage, laborEach, failure, packagingRate, safety, profit];
     if (numbers.some((value) => value == null) || failure >= 1 || life <= 0 || flow <= 0) return { ready: false };
-    const plasticCm3 = square * square * height * CUBIC_INCH_CM3 * infill;
-    const kg = (plasticCm3 * density / 1000) * squares;
-    const hours = ((plasticCm3 * 1000) / flow / 3600) * squares;
+    const baseMm = clampBaseMm(state.baseMm == null ? defaultBaseMm(squares) : state.baseMm, squares);
+    const baseIn = baseMm / MM_PER_IN;
+    const tileIn2 = square * square * squares;
+    const basinM2 = basinAreaM2(state.feature);
+    const scale = state.fit && state.fit.inchesPerMeter > 0 ? state.fit.inchesPerMeter : 0;
+    let basinIn2 = basinM2 && scale ? basinM2 * scale * scale : 0;
+    let areaSource = "basin";
+    if (!(basinIn2 > 0)) {
+        basinIn2 = tileIn2;
+        areaSource = "tiles";
+    } else if (basinIn2 > tileIn2) basinIn2 = tileIn2;
+    const baseCm3 = tileIn2 * baseIn * CUBIC_INCH_CM3 * infill;
+    const reliefCm3 = basinIn2 * riseIn * CUBIC_INCH_CM3 * infill;
+    const plasticCm3 = baseCm3 + reliefCm3;
+    const kg = plasticCm3 * density / 1000;
+    const hours = (plasticCm3 * 1000) / flow / 3600;
+    const height = tileIn2 > 0 ? (baseIn * tileIn2 + riseIn * basinIn2) / tileIn2 : baseIn;
     const tileFactor = (square / 24) * (square / 24);
     const laborHours = squares * laborEach * tileFactor;
     const materialCost = kg * price;
@@ -918,7 +961,7 @@ function printEstimate(state) {
         return { id: kit.id, label: kit.label, qty, amount };
     });
     const applied = state.vertical ? state.vertical.applied : state.exaggeration;
-    const boxHeight = stackInches(state.elevGrid, state.fit, applied) || height * squares;
+    const boxHeight = stackInches(state.elevGrid, state.fit, applied, baseIn) || height * squares;
     const goods = withFailure + kitTotal;
     const packagingAmount = goods * packagingRate;
     const before = goods + packagingAmount;
@@ -931,6 +974,18 @@ function printEstimate(state) {
         material,
         grade,
         squares,
+        baseMm,
+        baseIn,
+        riseIn,
+        tileIn2,
+        basinIn2,
+        areaSource,
+        baseCm3,
+        reliefCm3,
+        plasticCm3,
+        withFailure,
+        kitTotal,
+        markedUp,
         heightIn: height,
         boxHeightIn: boxHeight,
         kg,
@@ -1071,19 +1126,68 @@ function roundDownTenth(value) {
     return Math.floor((value + 1e-9) * 10) / 10;
 }
 
-function maxExaggeration(reliefM, metersPerInch) {
+function maxExaggeration(reliefM, metersPerInch, baseIn) {
     if (!(reliefM > 0) || !(metersPerInch > 0)) return 100;
-    return Math.min(100, roundDownTenth((17.5 * metersPerInch) / reliefM));
+    const room = Math.max(0, MODEL_MAX_IN - (Number(baseIn) || 0));
+    return Math.min(100, roundDownTenth((room * metersPerInch) / reliefM));
 }
 
-function appliedExaggeration(requested, reliefM, metersPerInch) {
+function appliedExaggeration(requested, reliefM, metersPerInch, baseIn) {
     const asked = Math.min(100, Math.max(0, Number(requested) || 0));
-    return Math.min(asked, maxExaggeration(reliefM, metersPerInch));
+    return Math.min(asked, maxExaggeration(reliefM, metersPerInch, baseIn));
 }
 
-function terrainHeight(elev, elevMin, metersPerInch, exaggeration) {
+function terrainHeight(elev, elevMin, metersPerInch, exaggeration, baseIn) {
+    const base = Number(baseIn);
+    const slab = Number.isFinite(base) && base >= 0 ? base : 0;
     const rise = metersPerInch > 0 ? (Math.max(0, elev - elevMin) / metersPerInch) * exaggeration : 0;
-    return { baseIn: 0.5, totalIn: 0.5 + rise };
+    return { baseIn: slab, totalIn: slab + rise };
+}
+
+function customerView(estimate, state) {
+    const squares = state.squares ? state.squares.size : 0;
+    const modelLabel = `Watershed Flow Model (${squares})`;
+    if (!estimate || !estimate.ready) {
+        return {
+            lines: [
+                { label: modelLabel, amount: null },
+                { label: "Accessory kits (0)", amount: null },
+                { label: "Shipping", amount: null },
+            ],
+            total: null,
+            tax: null,
+        };
+    }
+    const goods = estimate.withFailure + estimate.kitTotal;
+    const markedCents = moneyCents(estimate.markedUp);
+    const modelShare = goods > 0 ? estimate.withFailure / goods : 1;
+    const modelAmount = markedCents == null ? null : moneyCents(estimate.markedUp * modelShare);
+    const kitAmount = markedCents == null || modelAmount == null ? null : moneyCents(markedCents - modelAmount);
+    const kitCount = estimate.kitLines.reduce((sum, kit) => sum + kit.qty, 0);
+    const shipAmount = estimate.ship && estimate.ship.amount != null ? moneyCents(estimate.ship.amount) : null;
+    const exempt = !!state.isuAffiliated;
+    const taxAmount = exempt || markedCents == null ? 0 : moneyCents(markedCents * AMES_TAX_RATE);
+    const lines = [
+        { label: modelLabel, amount: modelAmount },
+        { label: `Accessory kits (${kitCount})`, amount: kitAmount },
+    ];
+    if (!exempt) lines.push({ label: "Sales tax, 7%", amount: taxAmount });
+    lines.push({ label: "Shipping", amount: shipAmount });
+    const known = lines.every((line) => line.amount != null);
+    const total = known ? moneyCents(lines.reduce((sum, line) => sum + line.amount, 0)) : null;
+    return {
+        lines,
+        total,
+        tax: {
+            exempt,
+            rate: exempt ? 0 : AMES_TAX_RATE,
+            jurisdiction: "Ames, Story County, Iowa",
+            state_rate: AMES_STATE_RATE,
+            local_rate: AMES_LOCAL_RATE,
+            basis: "model and kits, after markup, before shipping",
+            amount: taxAmount,
+        },
+    };
 }
 
 function gridMean(grid) {
@@ -1099,8 +1203,11 @@ function gridMean(grid) {
 
 function orderPayload(state) {
     const lines = quoteLines(state);
+    const estimate = printEstimate(state);
     const missing = lines.filter((line) => line.amount == null).map((line) => line.label);
-    const total = missing.length ? null : lines.reduce((sum, line) => sum + line.amount, 0);
+    const internalTotal = missing.length ? null : lines.reduce((sum, line) => sum + line.amount, 0);
+    const view = customerView(estimate, state);
+    const total = missing.length ? null : view.total;
     return {
         product: "watershed-flow-model",
         watershed: state.feature ? {
@@ -1114,7 +1221,19 @@ function orderPayload(state) {
         rotation_deg: state.fit ? state.fit.rotationDeg : 0,
         cols: state.fit ? state.fit.cols : null,
         rows: state.fit ? state.fit.rows : null,
-        border_in: state.fit ? state.fit.borderIn : 0,
+        border_in: state.fit ? state.fit.borderIn : clampBufferIn(state.bufferIn),
+        buffer_in: state.fit ? state.fit.borderIn : clampBufferIn(state.bufferIn),
+        base_mm: estimate.ready ? estimate.baseMm : clampBaseMm(state.baseMm, state.squares ? state.squares.size : 1),
+        base_in: estimate.ready ? estimate.baseIn : null,
+        isu_affiliated: !!state.isuAffiliated,
+        volume: estimate.ready ? {
+            tile_in2: estimate.tileIn2,
+            basin_in2: estimate.basinIn2,
+            area_source: estimate.areaSource,
+            base_cm3: estimate.baseCm3,
+            relief_cm3: estimate.reliefCm3,
+            plastic_cm3: estimate.plasticCm3,
+        } : null,
         meters_per_inch: state.fit ? state.fit.metersPerInch : null,
         inches_per_meter: state.fit ? state.fit.inchesPerMeter : null,
         cx: state.fit ? state.fit.cx : null,
@@ -1142,6 +1261,9 @@ function orderPayload(state) {
             name: state.recipient,
         },
         lines,
+        customer_lines: view.lines,
+        tax: view.tax,
+        internal_total: internalTotal,
         total,
         missing,
         delivery: deliveryDays(state),
@@ -1791,14 +1913,16 @@ function showPrintModel(field) {
     const colors = [];
     const at = (i, j) => {
         const h = heights[j][i];
-        const tone = h <= 0.51 ? 0 : (h - minH) / span;
+        const baseCut = Number(field.base_in);
+        const flatAt = (Number.isFinite(baseCut) ? baseCut : 2.6 / MM_PER_IN) + 0.01;
+        const tone = h <= flatAt ? 0 : (h - minH) / span;
         return [
             (i / (nx - 1) - 0.5) * widthIn,
             h,
             (j / (ny - 1) - 0.5) * depthIn,
-            h <= 0.51 ? 0.78 : 0.42 + 0.34 * tone,
-            h <= 0.51 ? 0.76 : 0.36 + 0.08 * (1 - tone),
-            h <= 0.51 ? 0.72 : 0.22,
+            h <= flatAt ? 0.78 : 0.42 + 0.34 * tone,
+            h <= flatAt ? 0.76 : 0.36 + 0.08 * (1 - tone),
+            h <= flatAt ? 0.72 : 0.22,
         ];
     };
     const tri = (a, b, c) => {
@@ -1938,6 +2062,10 @@ function bootWatershedPage() {
         method: "catalog",
         pourPoint: null,
         squareCount: 4,
+        bufferIn: 0.5,
+        baseMm: 2.6,
+        baseManual: false,
+        isuAffiliated: false,
         alignment: "north",
         fit: null,
         squares: new Set(),
@@ -2044,6 +2172,49 @@ function bootWatershedPage() {
     document.getElementById("square-count").addEventListener("input", (event) => {
         const next = Math.floor(finite(event.target.value) || 1);
         state.squareCount = Math.max(1, Math.min(state.rates ? state.rates.max_squares || 100 : 100, next));
+        if (!state.baseManual) {
+            state.baseMm = defaultBaseMm(state.squareCount);
+            const base = document.getElementById("base-mm");
+            if (base && document.activeElement !== base) base.value = String(state.baseMm);
+        }
+        render();
+    });
+    document.getElementById("buffer-in").addEventListener("input", (event) => {
+        const raw = event.target.value.trim();
+        if (!raw || raw === "." || raw.endsWith(".")) return;
+        const next = Number(raw);
+        if (!Number.isFinite(next)) return;
+        state.bufferIn = Math.min(3, Math.max(0, next));
+        render();
+    });
+    document.getElementById("buffer-in").addEventListener("change", (event) => {
+        state.bufferIn = clampBufferIn(event.target.value);
+        event.target.value = String(state.bufferIn);
+        render();
+    });
+    document.getElementById("base-mm").addEventListener("input", (event) => {
+        const raw = event.target.value.trim();
+        if (!raw || raw === "." || raw.endsWith(".")) return;
+        const next = Number(raw);
+        if (!Number.isFinite(next)) return;
+        state.baseManual = true;
+        state.baseMm = Math.min(40, Math.max(2, next));
+        render();
+    });
+    document.getElementById("base-mm").addEventListener("change", (event) => {
+        const raw = event.target.value.trim();
+        if (!raw) {
+            state.baseManual = false;
+            state.baseMm = defaultBaseMm(state.squareCount);
+        } else {
+            state.baseManual = true;
+            state.baseMm = clampBaseMm(raw, state.squareCount);
+        }
+        event.target.value = String(state.baseMm);
+        render();
+    });
+    document.getElementById("isu-affiliated").addEventListener("change", (event) => {
+        state.isuAffiliated = event.target.checked;
         render();
     });
     document.getElementById("align-north").addEventListener("click", () => setAlignment("north"));
@@ -2113,10 +2284,6 @@ function bootWatershedPage() {
         });
     });
 
-    function moneyText(amount) {
-        return Number(amount).toLocaleString("en-US", { style: "currency", currency: "USD" });
-    }
-
     function buildPrintControls() {
         const spec = (state.rates && state.rates.print) || {};
         const materialSelect = document.getElementById("print-material");
@@ -2124,7 +2291,7 @@ function bootWatershedPage() {
         const materials = spec.materials || {};
         const grades = spec.grades || {};
         materialSelect.innerHTML = Object.entries(materials).map(([id, item]) => (
-            `<option value="${escapeHtml(id)}">${escapeHtml(item.label)} · ${moneyText(item.usd_per_kg)}/kg</option>`
+            `<option value="${escapeHtml(id)}">${escapeHtml(item.label)}</option>`
         )).join("");
         gradeSelect.innerHTML = Object.entries(grades).map(([id, item]) => (
             `<option value="${escapeHtml(id)}">${escapeHtml(item.label)} · ${Number(item.layer_mm).toFixed(2)} mm</option>`
@@ -2148,12 +2315,11 @@ function bootWatershedPage() {
         const kits = (state.rates && state.rates.kits) || [];
         host.innerHTML = kits.map((kit) => {
             const lines = (kit.materials || []).map((item) => (
-                `<li>${escapeHtml(item.name)} · ${moneyText(item.price)}</li>`
+                `<li>${escapeHtml(item.name)}</li>`
             )).join("");
             return `<div class="kit-block">
                 <h3>${escapeHtml(kit.label)}</h3>
                 <ul class="kit-lines">${lines}</ul>
-                <p class="kit-price">${moneyText(kitUnitPrice(kit))} each</p>
                 <label for="kit-${escapeHtml(kit.id)}">Quantity</label>
                 <input id="kit-${escapeHtml(kit.id)}" data-kit="${escapeHtml(kit.id)}" type="number" min="0" max="20" step="1" value="0">
             </div>`;
@@ -2386,6 +2552,7 @@ function bootWatershedPage() {
             state.alignment,
             outline,
             crs,
+            state.bufferIn,
         );
         state.squares = state.fit.squares;
         state.scale = state.fit.metersPerInch * 24;
@@ -2604,9 +2771,9 @@ function bootWatershedPage() {
             const ground = fit.metersPerInch >= 1000
                 ? `${(fit.metersPerInch / 1000).toFixed(2)} km`
                 : `${Math.round(fit.metersPerInch).toLocaleString("en-US")} m`;
-            const border = fit.borderIn
-                ? "A 1/2 inch border is left around the outside so the squares can lock."
-                : "This single square uses the full 24 by 24 inches.";
+            const border = fit.borderIn > 0
+                ? `A ${fit.borderIn} in buffer is left around the watershed.`
+                : "No buffer is left around the watershed.";
             const facing = state.alignment === "north"
                 ? "The top of the model is true north."
                 : `The model is turned ${fit.rotationDeg}° so the basin prints as large as it can.`;
@@ -2635,16 +2802,20 @@ function bootWatershedPage() {
             return;
         }
         const reliefM = Math.max(0, grid.max - grid.min);
-        const limit = maxExaggeration(reliefM, fit.metersPerInch);
-        const applied = appliedExaggeration(state.exaggeration, reliefM, fit.metersPerInch);
-        const peak = terrainHeight(grid.max, grid.min, fit.metersPerInch, applied);
+        const tileCount = state.squares && state.squares.size ? state.squares.size : state.squareCount;
+        const baseMm = clampBaseMm(state.baseMm, tileCount);
+        const baseIn = baseMm / MM_PER_IN;
+        const limit = maxExaggeration(reliefM, fit.metersPerInch, baseIn);
+        const applied = appliedExaggeration(state.exaggeration, reliefM, fit.metersPerInch, baseIn);
+        const peak = terrainHeight(grid.max, grid.min, fit.metersPerInch, applied, baseIn);
         state.vertical = {
             requested: state.exaggeration,
             applied,
             limit,
             elev_min_m: grid.min,
             elev_max_m: grid.max,
-            base_in: 0.5,
+            base_mm: baseMm,
+            base_in: baseIn,
             max_height_in: peak.totalIn,
         };
         const limited = applied + 0.001 < state.exaggeration
@@ -2654,7 +2825,7 @@ function bootWatershedPage() {
         if (state.printCrs && grid.resolution_m) {
             print = ` Print grid: ${state.printCrs.label}, ${resolutionLabel(grid.resolution_m)}.`;
         }
-        note.textContent = `Elevation spans ${Math.round(grid.min).toLocaleString("en-US")}–${Math.round(grid.max).toLocaleString("en-US")} m. Applied exaggeration is ${applied.toFixed(1)} (maximum ${limit.toFixed(1)}). The base is 0.5 in and the highest point is ${peak.totalIn.toFixed(2)} in.${limited}${print}`;
+        note.textContent = `Elevation spans ${Math.round(grid.min).toLocaleString("en-US")}–${Math.round(grid.max).toLocaleString("en-US")} m. Applied exaggeration is ${applied.toFixed(1)} (maximum ${limit.toFixed(1)}). The base is ${baseMm.toFixed(1)} mm (${baseIn.toFixed(3)} in) and the highest point is ${peak.totalIn.toFixed(2)} in.${limited}${print}`;
     }
 
     function ensureElevation() {
@@ -2751,31 +2922,26 @@ function bootWatershedPage() {
         const estimate = printEstimate(form);
         const payload = orderPayload(form);
         const money = (amount) => amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
-        const rows = payload.lines.map((line) => `<div><span>${escapeHtml(line.label)}</span><span class="${line.amount == null ? "missing" : ""}">${line.amount == null ? "Rate not set" : money(line.amount)}</span></div>`).join("");
+        const rows = (payload.customer_lines || []).map((line) => `<div><span>${escapeHtml(line.label)}</span><span class="${line.amount == null ? "missing" : ""}">${line.amount == null ? "Rate not set" : money(line.amount)}</span></div>`).join("");
+        const waiting = payload.total == null
+            ? (estimate.ready
+                ? `Needs ${payload.missing.join(", ")}`
+                : "Loading the estimate")
+            : "";
         const total = payload.total == null
-            ? `<div class="total"><span>Total</span><span class="missing">Needs ${escapeHtml(payload.missing.join(", "))}</span></div>`
+            ? `<div class="total"><span>Total</span><span class="missing">${escapeHtml(waiting)}</span></div>`
             : `<div class="total"><span>Total</span><span>${money(payload.total)}</span></div>`;
         document.getElementById("quote").innerHTML = rows + total;
         syncOrderButton();
-        const days = payload.delivery;
-        const parts = [];
-        if (days.printHours == null) parts.push("Print time appears after the elevation loads.");
-        else {
-            const dayWord = days.printDays === 1 ? "day" : "days";
-            const shop = days.activeDays == null ? "" : ` The shop schedules ${days.activeDays} print days a year.`;
-            parts.push(`Print time about ${days.printHours.toFixed(1)} h, about ${days.printDays} ${dayWord} if one printer runs 24 hours.${shop}`);
-        }
-        parts.push(days.assemblyDays == null ? "Assembly time is not set." : `Assembly is ${days.assemblyDays} day${days.assemblyDays === 1 ? "" : "s"}.`);
         const ship = estimate.ship;
-        if (!estimate.ready || !ship || ship.amount == null) parts.push("Shipping needs a US ZIP Code from the census table.");
-        else {
-            const limit = ship.limited
-                ? " This box is past the 150 lb or 165 in parcel limit, so the rate extends the published 30 to 50 lb slope."
-                : "";
-            const extended = ship.extended && !ship.limited ? " The rate above 50 lb extends the published 30 to 50 lb slope." : "";
-            parts.push(`Ships from Ames ${ship.originZip} to ${ship.zip}, about ${Math.round(ship.miles)} miles, Zone ${ship.zone}. The box is 24 by 24 by ${ship.heightIn.toFixed(1)} in. Scale weight is ${ship.scaleLb.toFixed(1)} lb after 30% packaging. Dimensional weight is ${ship.dimLb.toFixed(1)} lb, so the billable weight is ${ship.billableLb} lb.${limit}${extended} UPS Ground is about ${ship.days} business days. This is the published daily base rate, without a residential surcharge.`);
+        let eta = "The estimate appears after the elevation loads.";
+        if (estimate.ready) {
+            const hours = `Print time is about ${estimate.hours.toFixed(1)} hours.`;
+            eta = !ship || ship.amount == null
+                ? `${hours} Shipping needs a US ZIP Code.`
+                : `${hours} Ships from Ames to ${ship.zip}, about ${ship.days} business days.`;
         }
-        document.getElementById("eta").textContent = parts.join(" ");
+        document.getElementById("eta").textContent = eta;
         if (map) document.getElementById("map-note").textContent = mapCaption();
     }
 
@@ -2828,6 +2994,9 @@ function bootWatershedPage() {
             rampBook: state.rampBook,
             exaggeration: state.exaggeration,
             vertical: state.vertical,
+            baseMm: state.baseMm,
+            bufferIn: state.bufferIn,
+            isuAffiliated: state.isuAffiliated,
             elevGrid: state.elevGrid,
             resolution: state.resolution,
             printCrs: state.printCrs,
@@ -2851,7 +3020,8 @@ function bootWatershedPage() {
         const printKey = state.printCrs ? state.printCrs.label : "";
         const ramp = activeRamp();
         const rampKey = ramp ? ramp.id : "";
-        const signature = `${styleColor}|${rampKey}|${state.rampScale}|${state.reliefImage ? state.reliefImage.zKey : ""}|${printKey}|${state.feature ? featureName(state.feature, 0) : ""}|${fit ? `${fit.cols}x${fit.rows}@${fit.rotationDeg}` : ""}|${state.pourPoint}|${state.exaggeration}|${state.reliefImage ? state.reliefImage.exaggeration : ""}|${state.reliefImage ? state.reliefImage.ramp : ""}|${state.elevGrid ? state.elevGrid.key : ""}`;
+        const fitKey = fit ? `${fit.cols}x${fit.rows}@${fit.rotationDeg} b${fit.borderIn} s${Number(fit.inchesPerMeter).toFixed(8)}` : "";
+        const signature = `${styleColor}|${rampKey}|${state.rampScale}|${state.reliefImage ? state.reliefImage.zKey : ""}|${printKey}|${state.feature ? featureName(state.feature, 0) : ""}|${fitKey}|${state.pourPoint}|${state.exaggeration}|${state.reliefImage ? state.reliefImage.exaggeration : ""}|${state.reliefImage ? state.reliefImage.ramp : ""}|${state.elevGrid ? state.elevGrid.key : ""}`;
         if (map._swccSignature === signature) return;
         map._swccSignature = signature;
         const token = (map._swccToken || 0) + 1;
