@@ -1,5 +1,5 @@
-sha: 74ba271ec92a824cc52ee4e13f683a6698451d7e
+sha: 471b080a7b9cdffb67fe99d458fef8a1e433760a
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-14
-note: Color Range is CONUS or Watershed. CONUS keeps the ramp at 0 to 8,000 m. Watershed stretches those colors from the basin low to the basin high. The overview tiles stay on 0 to 8,000 m. The page script is watershed-model.js?v=20261014a.
+note: The quote adds a 0.5 in watershed buffer (0 to 3 in) and a tile-count base (2 mm plus 0.2 mm per extra tile, 2 to 40 mm). The page shows the model, kit count, shipping, and Ames sales tax unless the group is ISU affiliated. The order file keeps the cost buildup. The page script is watershed-model.js?v=20261014b and the stylesheet is watershed-model.css?v=20261014b.
