@@ -1657,10 +1657,7 @@ async function sampleCoarse(feature, resolution, signal) {
     );
 }
 
-const FINE_TILE_BASES = new Set([
-    "http://el4352-ws.iastate.edu:8080/fine",
-    "http://10.27.15.160:8080/fine",
-]);
+const FINE_TILE_BASES = new Set();
 const HOSTED_TILE_BASE = "https://raw.githubusercontent.com/ISU-SWCC/isu-swcc.github.io/dem-tiles";
 const HOSTED_RESOLUTIONS = [250];
 
@@ -1871,8 +1868,7 @@ if (typeof document !== "undefined" && document.getElementById("map")) {
 }
 
 function campusOrderHost() {
-    const host = String(location.hostname || "").toLowerCase();
-    return host === "el4352-ws.iastate.edu" || host === "10.27.15.160";
+    return false;
 }
 
 function rotr32(value, bits) {
@@ -2051,9 +2047,20 @@ function viewSignature(state) {
 function layerViewStatus(layerMm, color) {
     const mm = Number(layerMm).toFixed(2);
     let text = `Drag to turn the model. Heights are the print heights, sampled every ${mm} mm.`;
-    if (color === "topo" || color === "satellite") {
-        text += " USGS topo and satellite stay on the map.";
+    if (color === "topo") text += " USGS topo stays on the map.";
+    return text;
+}
+
+function satelliteStatus(layerMm, target, layout) {
+    const mm = Number(layerMm).toFixed(2);
+    let text = `Drag to turn the model. Heights are the print heights, sampled every ${mm} mm.`;
+    if (target) {
+        text += ` The satellite image is ${target.nx} by ${target.ny} pixels, one pixel every ${mm} mm.`;
     }
+    if (layout && layout.k > 1) {
+        text += ` This view shows every ${(Number(layerMm) * layout.k).toFixed(2)} mm. Zoom in for every ${mm} mm.`;
+    }
+    text += " NAIP from The National Map.";
     return text;
 }
 
@@ -2215,6 +2222,8 @@ async function buildViewField(form, token, paint) {
         metersPerInch: fit.metersPerInch,
         colorMode: paint.colorMode,
         stops: paint.stops,
+        fit,
+        satelliteTarget: printImagePixels(widthIn, depthIn, layerIn),
         originX: -halfW,
         originY: -halfH,
         source: {
@@ -2333,7 +2342,7 @@ function planLayerWindow(view, dolly) {
 function fillLayerMesh(view, win) {
     const nx = win.nx;
     const ny = win.ny;
-    const samples = new Float32Array(nx * ny * 6);
+    const samples = new Float32Array(nx * ny * 7);
     const cover = new Uint8Array(nx * ny);
     let maxH = 0;
     const halfW = view.widthIn / 2;
@@ -2346,13 +2355,14 @@ function fillLayerMesh(view, win) {
             const on = !!sample.covered;
             const h = on ? quantizeLayer(sample.h, view.baseIn, view.layerIn) : 0;
             const color = on ? layerColor(view, sample, mx, my) : PLATE_RGB;
-            const at = (j * nx + i) * 6;
+            const at = (j * nx + i) * 7;
             samples[at] = mx;
             samples[at + 1] = h;
             samples[at + 2] = my;
             samples[at + 3] = color[0];
             samples[at + 4] = color[1];
             samples[at + 5] = color[2];
+            samples[at + 6] = on ? 1 : 0;
             cover[j * nx + i] = on ? 1 : 0;
             if (on && h > maxH) maxH = h;
         }
@@ -2389,27 +2399,29 @@ function fillLayerMesh(view, win) {
             edge(i + 1, j, fullPlate && i === cellsX - 1);
         }
     }
-    const data = new Float32Array((quads * 6 + walls * 6) * 6);
+    const data = new Float32Array((quads * 6 + walls * 6) * 7);
     let offset = 0;
     const pushAt = (i, j) => {
-        const at = (j * nx + i) * 6;
+        const at = (j * nx + i) * 7;
         data[offset] = samples[at];
         data[offset + 1] = samples[at + 1];
         data[offset + 2] = samples[at + 2];
         data[offset + 3] = samples[at + 3];
         data[offset + 4] = samples[at + 4];
         data[offset + 5] = samples[at + 5];
-        offset += 6;
+        data[offset + 6] = samples[at + 6];
+        offset += 7;
     };
     const pushBase = (i, j) => {
-        const at = (j * nx + i) * 6;
+        const at = (j * nx + i) * 7;
         data[offset] = samples[at];
         data[offset + 1] = 0;
         data[offset + 2] = samples[at + 2];
         data[offset + 3] = WALL_RGB[0];
         data[offset + 4] = WALL_RGB[1];
         data[offset + 5] = WALL_RGB[2];
-        offset += 6;
+        data[offset + 6] = 0;
+        offset += 7;
     };
     const wall = (i0, j0, i1, j1) => {
         pushBase(i0, j0);
@@ -2435,7 +2447,361 @@ function fillLayerMesh(view, win) {
         }
     }
     if (offset !== data.length) throw new Error("The print mesh did not match the buffer outline.");
-    return { data, count: offset / 6, maxH };
+    return { data, count: offset / 7, maxH };
+}
+
+const SATELLITE_TILE_URL = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/";
+const SATELLITE_MAX_ZOOM = 16;
+const SATELLITE_MAX_TILES = 64;
+const SATELLITE_PIXEL_BUDGET = 40000000;
+const SATELLITE_MAX_SHEETS = 4;
+const SATELLITE_MERCATOR = 156543.03392804097;
+const satelliteTileCache = new Map();
+
+function printImagePixels(widthIn, depthIn, pixelIn) {
+    const step = pixelIn > 0 ? pixelIn : 1;
+    return {
+        pixelIn: step,
+        nx: Math.max(2, Math.ceil(widthIn / step - 1e-6)),
+        ny: Math.max(2, Math.ceil(depthIn / step - 1e-6)),
+    };
+}
+
+function satelliteLayout(view, dolly, maxDim) {
+    const pixelIn = view.layerIn;
+    const scale = Math.min(1, Math.max(0.02, dolly));
+    const spanX = view.widthIn * scale;
+    const spanY = view.depthIn * scale;
+    const limit = Math.max(256, maxDim || 4096);
+    let chosen = null;
+    let k = 1;
+    while (k < 100000) {
+        const step = pixelIn * k;
+        const nx = Math.max(2, Math.ceil(spanX / step - 1e-6));
+        const ny = Math.max(2, Math.ceil(spanY / step - 1e-6));
+        const sheets = Math.ceil(nx / limit);
+        if (ny <= limit && sheets <= SATELLITE_MAX_SHEETS && nx * ny <= SATELLITE_PIXEL_BUDGET) {
+            chosen = { k, step, nx, ny, sheets };
+            break;
+        }
+        k += 1;
+    }
+    if (!chosen) {
+        const step = Math.max(pixelIn, Math.max(spanX, spanY) / limit);
+        const sized = printImagePixels(spanX, spanY, step);
+        chosen = { k: Math.ceil(step / pixelIn), step, nx: sized.nx, ny: sized.ny, sheets: 1 };
+    }
+    const widthIn = chosen.nx * chosen.step;
+    const depthIn = chosen.ny * chosen.step;
+    const minX = -view.widthIn / 2;
+    const minY = -view.depthIn / 2;
+    let originX = Math.min(Math.max(-spanX / 2, minX), Math.max(minX, minX + view.widthIn - widthIn));
+    let originY = Math.min(Math.max(-spanY / 2, minY), Math.max(minY, minY + view.depthIn - depthIn));
+    const sheetList = [];
+    const base = Math.floor(chosen.nx / chosen.sheets);
+    let extra = chosen.nx - base * chosen.sheets;
+    let col = 0;
+    for (let index = 0; index < chosen.sheets; index += 1) {
+        const count = base + (extra > 0 ? 1 : 0);
+        if (extra > 0) extra -= 1;
+        sheetList.push({
+            col,
+            nx: count,
+            ny: chosen.ny,
+            originX: originX + col * chosen.step,
+            originY,
+            widthIn: count * chosen.step,
+            depthIn,
+        });
+        col += count;
+    }
+    return { ...chosen, originX, originY, widthIn, depthIn, sheetList };
+}
+
+function satelliteBounds(view, layout) {
+    let west = Infinity;
+    let south = Infinity;
+    let east = -Infinity;
+    let north = -Infinity;
+    for (let j = 0; j <= 4; j += 1) {
+        for (let i = 0; i <= 4; i += 1) {
+            const mx = layout.originX + (layout.widthIn * i) / 4;
+            const my = layout.originY + (layout.depthIn * j) / 4;
+            const lnglat = modelInchesToLngLat(mx, my, view.fit);
+            west = Math.min(west, lnglat[0]);
+            east = Math.max(east, lnglat[0]);
+            south = Math.min(south, lnglat[1]);
+            north = Math.max(north, lnglat[1]);
+        }
+    }
+    const padX = Math.max(1e-4, (east - west) * 0.02);
+    const padY = Math.max(1e-4, (north - south) * 0.02);
+    return {
+        west: Math.max(-179.9, west - padX),
+        south: Math.max(-85, south - padY),
+        east: Math.min(179.9, east + padX),
+        north: Math.min(85, north + padY),
+    };
+}
+
+function satelliteWorldPixel(lng, lat, zoom) {
+    const size = 256 * 2 ** zoom;
+    const x = (lng + 180) / 360 * size;
+    const s = Math.min(1, Math.max(-1, Math.sin(lat * Math.PI / 180)));
+    const y = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * size;
+    return [x, y];
+}
+
+function satelliteTileRange(bounds, zoom) {
+    const nw = satelliteWorldPixel(bounds.west, bounds.north, zoom);
+    const se = satelliteWorldPixel(bounds.east, bounds.south, zoom);
+    const limit = 2 ** zoom;
+    const x0 = Math.max(0, Math.min(limit - 1, Math.floor(nw[0] / 256)));
+    const x1 = Math.max(0, Math.min(limit - 1, Math.floor(se[0] / 256)));
+    const y0 = Math.max(0, Math.min(limit - 1, Math.floor(nw[1] / 256)));
+    const y1 = Math.max(0, Math.min(limit - 1, Math.floor(se[1] / 256)));
+    const cols = Math.abs(x1 - x0) + 1;
+    const rows = Math.abs(y1 - y0) + 1;
+    return { x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0: Math.min(y0, y1), y1: Math.max(y0, y1), cols, rows, count: cols * rows };
+}
+
+function chooseSatelliteZoom(bounds, groundM) {
+    const lat = (bounds.south + bounds.north) / 2;
+    const cos = Math.max(0.2, Math.abs(Math.cos(lat * Math.PI / 180)));
+    let zoom = SATELLITE_MAX_ZOOM;
+    if (groundM > 0) zoom = Math.ceil(Math.log2((SATELLITE_MERCATOR * cos) / groundM));
+    zoom = Math.max(0, Math.min(SATELLITE_MAX_ZOOM, zoom));
+    let range = satelliteTileRange(bounds, zoom);
+    while ((range.count > SATELLITE_MAX_TILES || range.cols > 32 || range.rows > 32) && zoom > 0) {
+        zoom -= 1;
+        range = satelliteTileRange(bounds, zoom);
+    }
+    return { zoom, ...range };
+}
+
+function loadSatelliteTile(zoom, x, y) {
+    const key = `${zoom}/${y}/${x}`;
+    const cached = satelliteTileCache.get(key);
+    if (cached) return cached;
+    const pending = new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = SATELLITE_TILE_URL + key;
+    });
+    satelliteTileCache.set(key, pending);
+    if (satelliteTileCache.size > 240) {
+        const oldest = satelliteTileCache.keys().next().value;
+        satelliteTileCache.delete(oldest);
+    }
+    return pending;
+}
+
+async function loadSatelliteMosaic(range, token) {
+    const jobs = [];
+    for (let y = range.y0; y <= range.y1; y += 1) {
+        for (let x = range.x0; x <= range.x1; x += 1) jobs.push({ x, y });
+    }
+    const images = new Array(jobs.length);
+    let cursor = 0;
+    const worker = async () => {
+        while (cursor < jobs.length) {
+            if (token !== printViewToken) return;
+            const index = cursor;
+            cursor += 1;
+            const job = jobs[index];
+            images[index] = await loadSatelliteTile(range.zoom, job.x, job.y);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, jobs.length) }, worker));
+    if (token !== printViewToken) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = range.cols * 256;
+    canvas.height = range.rows * 256;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    let drawn = 0;
+    jobs.forEach((job, index) => {
+        const img = images[index];
+        if (!img) return;
+        ctx.drawImage(img, (job.x - range.x0) * 256, (job.y - range.y0) * 256);
+        drawn += 1;
+    });
+    if (!drawn) return null;
+    let image;
+    try {
+        image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } catch (error) {
+        return null;
+    }
+    return {
+        zoom: range.zoom,
+        data: image.data,
+        width: canvas.width,
+        height: canvas.height,
+        originX: range.x0 * 256,
+        originY: range.y0 * 256,
+    };
+}
+
+function sampleMosaic(mosaic, lng, lat) {
+    const [px, py] = satelliteWorldPixel(lng, lat, mosaic.zoom);
+    const x = px - mosaic.originX;
+    const y = py - mosaic.originY;
+    if (x < 0 || y < 0 || x >= mosaic.width - 1 || y >= mosaic.height - 1) return null;
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+    const tx = x - x0;
+    const ty = y - y0;
+    const at = (col, row) => (row * mosaic.width + col) * 4;
+    const p00 = at(x0, y0);
+    const p10 = at(x0 + 1, y0);
+    const p01 = at(x0, y0 + 1);
+    const p11 = at(x0 + 1, y0 + 1);
+    if (mosaic.data[p00 + 3] < 250) return null;
+    const mix = (channel) => {
+        const low = mosaic.data[p00 + channel] * (1 - tx) + mosaic.data[p10 + channel] * tx;
+        const high = mosaic.data[p01 + channel] * (1 - tx) + mosaic.data[p11 + channel] * tx;
+        return low * (1 - ty) + high * ty;
+    };
+    return [mix(0), mix(1), mix(2)];
+}
+
+function coarsePixelIndexes(count, cell) {
+    const indexes = [];
+    for (let index = 0; index < count; index += cell) indexes.push(index);
+    if (indexes[indexes.length - 1] !== count - 1) indexes.push(count - 1);
+    return indexes;
+}
+
+async function fillSatelliteSheet(view, sheet, step, mosaic, token) {
+    const nx = sheet.nx;
+    const ny = sheet.ny;
+    const pixels = new Uint8Array(nx * ny * 4);
+    const cell = 16;
+    const xs = coarsePixelIndexes(nx, cell);
+    const ys = coarsePixelIndexes(ny, cell);
+    const gxN = xs.length;
+    const gyN = ys.length;
+    const lngs = new Float64Array(gxN * gyN);
+    const lats = new Float64Array(gxN * gyN);
+    const cover = new Uint8Array(gxN * gyN);
+    const flat = new Uint8Array(gxN * gyN);
+    const shade = new Float32Array(gxN * gyN);
+    for (let j = 0; j < gyN; j += 1) {
+        for (let i = 0; i < gxN; i += 1) {
+            const mx = sheet.originX + xs[i] * step;
+            const my = sheet.originY + ys[j] * step;
+            const lnglat = modelInchesToLngLat(mx, my, view.fit);
+            const at = j * gxN + i;
+            lngs[at] = lnglat[0];
+            lats[at] = lnglat[1];
+            const sample = sourceSample(view, mx, my);
+            cover[at] = sample.covered ? 1 : 0;
+            flat[at] = sample.flat ? 1 : 0;
+            shade[at] = sample.covered && !sample.flat && Number.isFinite(sample.elev)
+                ? layerShade(view, mx, my, sample.elev)
+                : 1;
+        }
+        if ((j & 3) === 3) {
+            if (token !== printViewToken) return null;
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+    }
+    let hit = 0;
+    let coveredCount = 0;
+    const paint = (x, y, rgb) => {
+        const dest = (y * nx + x) * 4;
+        pixels[dest] = rgb[0];
+        pixels[dest + 1] = rgb[1];
+        pixels[dest + 2] = rgb[2];
+        pixels[dest + 3] = 255;
+    };
+    const plate = [214, 210, 202];
+    for (let gy = 0; gy < gyN - 1; gy += 1) {
+        if (token !== printViewToken) return null;
+        const y0 = ys[gy];
+        const y1 = ys[gy + 1];
+        const yStop = gy === gyN - 2 ? y1 + 1 : y1;
+        for (let gx = 0; gx < gxN - 1; gx += 1) {
+            const x0 = xs[gx];
+            const x1 = xs[gx + 1];
+            const xStop = gx === gxN - 2 ? x1 + 1 : x1;
+            const i00 = gy * gxN + gx;
+            const i10 = i00 + 1;
+            const i01 = i00 + gxN;
+            const i11 = i01 + 1;
+            const blockCover = cover[i00] + cover[i10] + cover[i01] + cover[i11];
+            const blockFlat = flat[i00] + flat[i10] + flat[i01] + flat[i11];
+            if (blockCover === 0) {
+                for (let y = y0; y < yStop; y += 1) {
+                    for (let x = x0; x < xStop; x += 1) paint(x, y, plate);
+                }
+                continue;
+            }
+            const uniform = blockCover === 4 && (blockFlat === 0 || blockFlat === 4);
+            for (let y = y0; y < yStop; y += 1) {
+                const ty = y1 === y0 ? 0 : (y - y0) / (y1 - y0);
+                for (let x = x0; x < xStop; x += 1) {
+                    const tx = x1 === x0 ? 0 : (x - x0) / (x1 - x0);
+                    if (!uniform) {
+                        const sample = sourceSample(view, sheet.originX + x * step, sheet.originY + y * step);
+                        if (!sample.covered) {
+                            paint(x, y, plate);
+                            continue;
+                        }
+                    }
+                    coveredCount += 1;
+                    const lng = (lngs[i00] * (1 - tx) + lngs[i10] * tx) * (1 - ty)
+                        + (lngs[i01] * (1 - tx) + lngs[i11] * tx) * ty;
+                    const lat = (lats[i00] * (1 - tx) + lats[i10] * tx) * (1 - ty)
+                        + (lats[i01] * (1 - tx) + lats[i11] * tx) * ty;
+                    const photo = sampleMosaic(mosaic, lng, lat);
+                    if (!photo) {
+                        paint(x, y, plate);
+                        continue;
+                    }
+                    hit += 1;
+                    let light = 1;
+                    if (uniform && blockFlat === 0) {
+                        light = (shade[i00] * (1 - tx) + shade[i10] * tx) * (1 - ty)
+                            + (shade[i01] * (1 - tx) + shade[i11] * tx) * ty;
+                    } else if (!uniform) {
+                        const sample = sourceSample(view, sheet.originX + x * step, sheet.originY + y * step);
+                        if (!sample.flat && Number.isFinite(sample.elev)) light = layerShade(view, sheet.originX + x * step, sheet.originY + y * step, sample.elev);
+                    }
+                    paint(x, y, [
+                        Math.max(0, Math.min(255, photo[0] * light)),
+                        Math.max(0, Math.min(255, photo[1] * light)),
+                        Math.max(0, Math.min(255, photo[2] * light)),
+                    ]);
+                }
+            }
+        }
+        if ((gy & 3) === 3) await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    return { pixels, hit, covered: coveredCount };
+}
+
+async function buildSatelliteSheets(view, layout, token) {
+    if (!view.fit) return null;
+    const bounds = satelliteBounds(view, layout);
+    const range = chooseSatelliteZoom(bounds, layout.step * view.metersPerInch);
+    const mosaic = await loadSatelliteMosaic(range, token);
+    if (!mosaic || token !== printViewToken) return null;
+    const built = [];
+    let hit = 0;
+    let covered = 0;
+    for (let index = 0; index < layout.sheetList.length; index += 1) {
+        const sheet = layout.sheetList[index];
+        const filled = await fillSatelliteSheet(view, sheet, layout.step, mosaic, token);
+        if (!filled || token !== printViewToken) return null;
+        hit += filled.hit;
+        covered += filled.covered;
+        built.push({ ...sheet, pixels: filled.pixels });
+    }
+    if (!(hit > 0) || hit < covered * 0.5) return { failed: true };
+    return { sheets: built, zoom: range.zoom, k: layout.k, step: layout.step, originX: layout.originX, originY: layout.originY, widthIn: layout.widthIn, depthIn: layout.depthIn };
 }
 
 function showLayerModel(view) {
@@ -2454,22 +2820,49 @@ function showLayerModel(view) {
     const vertexSrc = `
         attribute vec3 aPos;
         attribute vec3 aColor;
+        attribute float aImage;
         uniform mat4 uMvp;
         varying vec3 vColor;
+        varying vec2 vInch;
+        varying float vImage;
         void main() {
             vColor = aColor;
+            vInch = aPos.xz;
+            vImage = aImage;
             gl_Position = uMvp * vec4(aPos, 1.0);
         }`;
     const fragmentSrc = `
         precision mediump float;
         varying vec3 vColor;
+        varying vec2 vInch;
+        varying float vImage;
+        uniform sampler2D uSat0;
+        uniform sampler2D uSat1;
+        uniform sampler2D uSat2;
+        uniform sampler2D uSat3;
+        uniform vec4 uStrip0;
+        uniform vec4 uStrip1;
+        uniform vec4 uStrip2;
+        uniform vec4 uStrip3;
+        uniform float uSheets;
+        uniform float uHasImage;
         void main() {
-            gl_FragColor = vec4(vColor, 1.0);
+            vec4 c0 = texture2D(uSat0, (vInch - uStrip0.xy) / max(uStrip0.zw, vec2(0.0001)));
+            vec4 c1 = texture2D(uSat1, (vInch - uStrip1.xy) / max(uStrip1.zw, vec2(0.0001)));
+            vec4 c2 = texture2D(uSat2, (vInch - uStrip2.xy) / max(uStrip2.zw, vec2(0.0001)));
+            vec4 c3 = texture2D(uSat3, (vInch - uStrip3.xy) / max(uStrip3.zw, vec2(0.0001)));
+            vec4 color = c0;
+            if (uSheets > 1.5 && vInch.x >= uStrip1.x) color = c1;
+            if (uSheets > 2.5 && vInch.x >= uStrip2.x) color = c2;
+            if (uSheets > 3.5 && vInch.x >= uStrip3.x) color = c3;
+            if (!(uHasImage > 0.5 && vImage > 0.5)) color = vec4(vColor, 1.0);
+            gl_FragColor = color;
         }`;
     const compile = (type, source) => {
         const shader = gl.createShader(type);
         gl.shaderSource(shader, source);
         gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(shader));
         return shader;
     };
     const program = gl.createProgram();
@@ -2483,13 +2876,16 @@ function showLayerModel(view) {
     gl.useProgram(program);
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    const stride = 24;
+    const stride = 28;
     const posLoc = gl.getAttribLocation(program, "aPos");
     const colorLoc = gl.getAttribLocation(program, "aColor");
+    const imageLoc = gl.getAttribLocation(program, "aImage");
     gl.enableVertexAttribArray(posLoc);
     gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, stride, 0);
     gl.enableVertexAttribArray(colorLoc);
     gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, stride, 12);
+    gl.enableVertexAttribArray(imageLoc);
+    gl.vertexAttribPointer(imageLoc, 1, gl.FLOAT, false, stride, 24);
     gl.enable(gl.DEPTH_TEST);
     gl.clearColor(0.957, 0.957, 0.957, 1);
     const mvpLoc = gl.getUniformLocation(program, "uMvp");
@@ -2512,8 +2908,94 @@ function showLayerModel(view) {
         gl.bufferData(gl.ARRAY_BUFFER, built.data, gl.STATIC_DRAW);
         gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, stride, 0);
         gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, stride, 12);
+        gl.vertexAttribPointer(imageLoc, 1, gl.FLOAT, false, stride, 24);
         count = built.count;
         maxH = built.maxH;
+    };
+    const maxDim = Math.min(8192, gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096);
+    const textures = [gl.createTexture(), gl.createTexture(), gl.createTexture(), gl.createTexture()];
+    const blankSatelliteTexture = (tex) => {
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texImage2D(
+            gl.TEXTURE_2D, 0, gl.RGBA, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+            new Uint8Array([214, 210, 202, 255, 214, 210, 202, 255, 214, 210, 202, 255, 214, 210, 202, 255]),
+        );
+    };
+    const samplerLocs = [0, 1, 2, 3].map((index) => gl.getUniformLocation(program, `uSat${index}`));
+    const stripLocs = [0, 1, 2, 3].map((index) => gl.getUniformLocation(program, `uStrip${index}`));
+    const sheetsLoc = gl.getUniformLocation(program, "uSheets");
+    const hasLoc = gl.getUniformLocation(program, "uHasImage");
+    textures.forEach((tex, index) => {
+        gl.activeTexture(gl.TEXTURE0 + index);
+        blankSatelliteTexture(tex);
+        gl.uniform1i(samplerLocs[index], index);
+        gl.uniform4f(stripLocs[index], 0, 0, 1, 1);
+    });
+    gl.uniform1f(sheetsLoc, 0);
+    gl.uniform1f(hasLoc, 0);
+    let held = null;
+    let imageSerial = 0;
+    let imageTimer = 0;
+    const applySatellite = (built, layout) => {
+        if (generation !== printGeneration || !built || !built.sheets) return;
+        gl.getError();
+        built.sheets.forEach((sheet, index) => {
+            gl.activeTexture(gl.TEXTURE0 + index);
+            gl.bindTexture(gl.TEXTURE_2D, textures[index]);
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, sheet.nx, sheet.ny, 0, gl.RGBA, gl.UNSIGNED_BYTE, sheet.pixels);
+            gl.uniform4f(stripLocs[index], sheet.originX, sheet.originY, sheet.widthIn, sheet.depthIn);
+        });
+        for (let index = built.sheets.length; index < 4; index += 1) {
+            gl.activeTexture(gl.TEXTURE0 + index);
+            blankSatelliteTexture(textures[index]);
+            gl.uniform4f(stripLocs[index], 0, 0, 1, 1);
+        }
+        if (gl.getError() !== gl.NO_ERROR) {
+            gl.uniform1f(hasLoc, 0);
+            if (note) note.textContent = "The satellite image is too large for this browser.";
+            return;
+        }
+        gl.uniform1f(sheetsLoc, built.sheets.length);
+        gl.uniform1f(hasLoc, 1);
+        held = layout;
+        if (note) note.textContent = satelliteStatus(view.layerMm, view.satelliteTarget, layout);
+    };
+    const refreshSatellite = () => {
+        if (view.colorMode !== "satellite" || !view.satelliteTarget) return;
+        const layout = satelliteLayout(view, dolly, maxDim);
+        if (held && held.step <= layout.step + 1e-9
+            && layout.originX >= held.originX - held.step
+            && layout.originY >= held.originY - held.step
+            && layout.originX + layout.widthIn <= held.originX + held.widthIn + held.step
+            && layout.originY + layout.depthIn <= held.originY + held.depthIn + held.step) return;
+        const serial = ++imageSerial;
+        const token = printViewToken;
+        buildSatelliteSheets(view, layout, token).then((built) => {
+            if (serial !== imageSerial || generation !== printGeneration || token !== printViewToken) return;
+            if (!built || built.failed) {
+                if (note) note.textContent = "The satellite image did not load. The model is shown without it.";
+                return;
+            }
+            applySatellite(built, layout);
+        }).catch(() => {
+            if (serial === imageSerial && note) note.textContent = "The satellite image did not load. The model is shown without it.";
+        });
+    };
+    const scheduleSatellite = () => {
+        if (view.colorMode !== "satellite") return;
+        clearTimeout(imageTimer);
+        imageTimer = setTimeout(() => {
+            if (generation === printGeneration) refreshSatellite();
+        }, 80);
     };
     canvas.onpointerdown = (event) => {
         dragging = true;
@@ -2535,10 +3017,15 @@ function showLayerModel(view) {
         event.preventDefault();
         dolly = Math.min(1, Math.max(0.02, dolly * (event.deltaY > 0 ? 1.12 : 0.89)));
         rebuild();
+        scheduleSatellite();
     };
     canvas._printWheel = onWheel;
     canvas.addEventListener("wheel", onWheel, { passive: false });
     rebuild();
+    if (view.colorMode === "satellite" && note && view.satelliteTarget) {
+        note.textContent = `Rendering the satellite image, ${view.satelliteTarget.nx} by ${view.satelliteTarget.ny} pixels.`;
+        scheduleSatellite();
+    }
     const draw = () => {
         if (generation !== printGeneration) return;
         const width = Math.max(1, canvas.clientWidth);
@@ -2665,6 +3152,7 @@ function showPrintModel(field) {
         const shader = gl.createShader(type);
         gl.shaderSource(shader, source);
         gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(shader));
         return shader;
     };
     const program = gl.createProgram();
@@ -3008,7 +3496,7 @@ function bootWatershedPage() {
             const colored = state.color === "dem" || state.color === "white";
             const field = await buildViewField(form, token, {
                 layerMm,
-                colorMode: colored ? "ramp" : "plain",
+                colorMode: state.color === "satellite" ? "satellite" : (colored ? "ramp" : "plain"),
                 stops: colored && ramp ? stopsForPaint(ramp) : null,
             });
             if (token !== printViewToken || !field) return;
@@ -3019,7 +3507,7 @@ function bootWatershedPage() {
             printBuildSignature = null;
             printViewMark = signature;
             showLayerModel(field);
-            if (note) note.textContent = layerViewStatus(layerMm, state.color);
+            if (note && state.color !== "satellite") note.textContent = layerViewStatus(layerMm, state.color);
         } catch (error) {
             console.error(error);
             if (token === printViewToken && note) note.textContent = "The watershed view could not be rendered.";
@@ -3359,12 +3847,11 @@ function bootWatershedPage() {
         const select = document.getElementById("dem-resolution");
         const basinId = state.feature && state.feature.properties && state.feature.properties.id;
         if (select) {
-            const onPublic = location.protocol === "https:";
             select.querySelectorAll("option").forEach((option) => {
                 const resolution = Number(option.value);
                 const onSite = resolution === 5000 || resolutionAvailable(basinId, resolution);
                 option.disabled = !onSite;
-                const label = `${resolutionLabel(resolution)}${onPublic && !onSite ? ", campus page" : ""}`;
+                const label = resolutionLabel(resolution);
                 if (option.textContent !== label) option.textContent = label;
             });
             if (select.value !== String(state.resolution)) select.value = String(state.resolution);
@@ -3386,7 +3873,7 @@ function bootWatershedPage() {
             const names = held.map(resolutionLabel).join(" and ");
             const noun = held.length === 1 ? "grid" : "grids";
             const verb = held.length === 1 ? "is" : "are";
-            text += ` The ${names} ${noun} for this basin ${verb} on the campus order page at http://EL4352-WS.iastate.edu:8080/pages/watershed-model.html.`;
+            text += ` The ${names} ${noun} for this basin ${verb} not on this site.`;
             if (resolutionAvailable(basinId, state.resolution)) {
                 text += ` This page uses ${resolutionLabel(state.resolution)}.`;
             }
@@ -3860,50 +4347,7 @@ function bootWatershedPage() {
     }
 
     async function recordOrder() {
-        if (state.orderBusy || !campusOrderHost()) return;
-        const payload = orderPayload(readForm());
-        if (!payload.quote_complete || !payload.elevation || !state.elevGrid) return;
-        state.orderBusy = true;
-        syncOrderButton();
-        const button = document.getElementById("order-btn");
-        button.textContent = "Recording";
-        const panel = document.getElementById("print-model");
-        const note = document.getElementById("print-status");
-        if (panel) panel.hidden = false;
-        if (note) note.textContent = "Recording the order.";
-        payload.elevation.values_sha256 = await elevationSha(state.elevGrid);
-        const response = await fetch("/order", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
-        if (response.status !== 202) throw new Error(String(response.status));
-        const accepted = await response.json();
-        if (note) note.textContent = "Building the print model.";
-        let status = null;
-        for (let attempt = 0; attempt < 90; attempt += 1) {
-            const check = await fetch(`/order/${accepted.id}`, { cache: "no-store" });
-            if (!check.ok) throw new Error(String(check.status));
-            status = await check.json();
-            if (status.state === "ready" || status.state === "held" || status.state === "failed") break;
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-        if (!status || status.state !== "ready") {
-            if (note) {
-                note.textContent = status && status.state === "held"
-                    ? "The shop held this order. The print files were not written."
-                    : "The print files were not written.";
-            }
-            state.orderBusy = false;
-            syncOrderButton();
-            return;
-        }
-        const preview = await fetch(`/print-preview/${accepted.id}.json`, { cache: "no-store" });
-        if (!preview.ok) throw new Error(String(preview.status));
-        showPrintModel(await preview.json());
-        printViewMark = viewSignature(state);
-        state.orderBusy = false;
-        syncOrderButton();
+        return;
     }
 
     function saveQuote() {
@@ -3930,9 +4374,9 @@ function bootWatershedPage() {
 function mapStyle(color, rampId) {
     const bases = {
         satellite: {
-            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-            maxzoom: 19,
-            attribution: "Satellite imagery © Esri",
+            tiles: ["https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}"],
+            maxzoom: 16,
+            attribution: "USGS National Map",
         },
         topo: {
             tiles: ["https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}"],

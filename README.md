@@ -29,7 +29,7 @@ Each record needs a `source` string. The build stops without one.
 
 Decided 2026-10-07. Procedure: [[../../../../Skills/SWCCWebsite]] section “Elevation.”
 
-Before a basin is offered, bake it on EL4352-WS:
+Before a basin is offered, bake the elevation grid:
 
 ```bash
 python Data/Service/SWCC/Website/bake_elevation.py --id example-basin --projection utm --utm-zone 15
