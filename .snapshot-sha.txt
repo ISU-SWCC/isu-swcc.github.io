@@ -1,5 +1,5 @@
-sha: 2696de1d38f7168e21d8f81b40382d96861e78e7
+sha: a387bfc997dd1016c407dd7de155943f9edbbdc9
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
-published: 2026-10-14
-note: The watershed base stops at the buffer around the basin. It does not fill each 24-inch square. The page script is watershed-model.js?v=20261014f. The stylesheet is still watershed-model.css?v=20261014c.
+published: 2026-10-15
+note: The public page drapes NAIP from The National Map on the print model. It does not name the campus host. The page script is watershed-model.js?v=20261015a. The stylesheet is still watershed-model.css?v=20261014c. National 30 m and 90 m tiles are not in this repo.
