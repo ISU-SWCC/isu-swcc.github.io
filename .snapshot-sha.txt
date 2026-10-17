@@ -1,5 +1,5 @@
-sha: 12d2dd78c20cfe768ec8a8a6217d239159495b65
+sha: e1c6a062cc054c8956a3bb79ca9a3e5ad71f0d93
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
 published: 2026-10-16
-note: The public page allows the basin DEM image and names the grid that loaded. The page script is watershed-model.js?v=20261016b. The stylesheet is still watershed-model.css?v=20261014c. National 30 m and 90 m tiles are not in this repo and are not requested from Cloudflare yet.
+note: The print model keeps north up and east to the right, and the drag orbit turns through a full circle. The page script is watershed-model.js?v=20261016c. The stylesheet is still watershed-model.css?v=20261014c. National 30 m and 90 m tiles are not in this repo and are not requested from Cloudflare yet.
