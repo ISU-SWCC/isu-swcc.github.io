@@ -1657,9 +1657,11 @@ async function sampleCoarse(feature, resolution, signal) {
     );
 }
 
-const FINE_TILE_BASES = new Set();
+const PUBLIC_FINE_BASE = "https://pub-ffa014eb27374c74aacceffe09165dc1.r2.dev";
+const FINE_TILE_BASES = new Set([PUBLIC_FINE_BASE.toLowerCase()]);
 const HOSTED_TILE_BASE = "https://raw.githubusercontent.com/ISU-SWCC/isu-swcc.github.io/dem-tiles";
 const HOSTED_RESOLUTIONS = [250];
+const PUBLIC_FINE_RESOLUTIONS = [30, 90];
 
 function hostedTileUrl(resolution, tx, ty) {
     return `${HOSTED_TILE_BASE}/${resolution}/${tx}/${ty}.png`;
@@ -1701,7 +1703,9 @@ function bakedFileId(id, resolution) {
 function resolutionAvailable(id, resolution) {
     if (COARSE_RESOLUTIONS.includes(resolution)) return true;
     if (bakedFileId(id, resolution)) return true;
-    if (location.protocol === "https:") return HOSTED_RESOLUTIONS.includes(resolution);
+    if (location.protocol === "https:") {
+        return HOSTED_RESOLUTIONS.includes(resolution) || PUBLIC_FINE_RESOLUTIONS.includes(resolution);
+    }
     return FINE_RESOLUTIONS.includes(resolution);
 }
 
@@ -4021,9 +4025,11 @@ function bootWatershedPage() {
         const onPublic = location.protocol === "https:";
         const fineGrids = fineBook && fineBook.grids;
         const fineOn = !onPublic && Boolean(fineGrids && fineGrids["30"] && fineGrids["90"] && fineGrids["250"]);
-        const hostedHere = onPublic && HOSTED_RESOLUTIONS.includes(state.resolution);
+        const hostedHere = onPublic && (
+            HOSTED_RESOLUTIONS.includes(state.resolution) || PUBLIC_FINE_RESOLUTIONS.includes(state.resolution)
+        );
         const available = onPublic
-            ? [...HOSTED_RESOLUTIONS, ...COARSE_RESOLUTIONS]
+            ? [...PUBLIC_FINE_RESOLUTIONS, ...HOSTED_RESOLUTIONS, ...COARSE_RESOLUTIONS]
             : [...FINE_RESOLUTIONS, ...COARSE_RESOLUTIONS];
         const availableText = ` The ${available.map(resolutionLabel).join(", ")} grids are on this site.`;
         if (state.resolution === 5000) {
@@ -4218,6 +4224,8 @@ function bootWatershedPage() {
             loader = sampleElevations(state.feature, controller.signal, bakedId);
         } else if (location.protocol === "https:" && HOSTED_RESOLUTIONS.includes(resolution)) {
             loader = sampleHosted(state.feature, resolution, controller.signal);
+        } else if (location.protocol === "https:" && PUBLIC_FINE_RESOLUTIONS.includes(resolution)) {
+            loader = sampleFine(state.feature, resolution, controller.signal);
         } else if (FINE_RESOLUTIONS.includes(resolution)) {
             loader = location.protocol === "https:"
                 ? Promise.reject(new Error("https-fine"))
