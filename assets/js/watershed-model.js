@@ -2084,7 +2084,7 @@ let printViewMark = null;
 let printBuildSignature = null;
 const LAYER_VERTEX_BUDGET = 250000;
 const PLATE_RGB = [214 / 255, 210 / 255, 202 / 255];
-const WALL_RGB = [0.75, 0.73, 0.7];
+const BASE_RGB = [1, 1, 1];
 
 function viewSignature(state) {
     const grid = state.elevGrid;
@@ -2415,6 +2415,7 @@ function fillLayerMesh(view, win) {
     let maxH = 0;
     const halfW = view.widthIn / 2;
     const halfD = view.depthIn / 2;
+    const baseY = quantizeLayer(view.baseIn, view.baseIn, view.layerIn);
     for (let j = 0; j < ny; j += 1) {
         for (let i = 0; i < nx; i += 1) {
             const mx = Math.min(halfW, Math.max(-halfW, win.x0 + i * win.drawStep));
@@ -2422,7 +2423,8 @@ function fillLayerMesh(view, win) {
             const sample = sourceSample(view, mx, my);
             const on = !!sample.covered;
             const h = on ? quantizeLayer(sample.h, view.baseIn, view.layerIn) : 0;
-            const color = on ? layerColor(view, sample, mx, my) : PLATE_RGB;
+            const onBase = on && h <= baseY + 1e-4;
+            const color = on ? (onBase ? BASE_RGB : layerColor(view, sample, mx, my)) : PLATE_RGB;
             const at = (j * nx + i) * 7;
             samples[at] = mx;
             samples[at + 1] = h;
@@ -2430,7 +2432,7 @@ function fillLayerMesh(view, win) {
             samples[at + 3] = color[0];
             samples[at + 4] = color[1];
             samples[at + 5] = color[2];
-            samples[at + 6] = on ? 1 : 0;
+            samples[at + 6] = on && !onBase ? 1 : 0;
             cover[j * nx + i] = on ? 1 : 0;
             if (on && h > maxH) maxH = h;
         }
@@ -2447,27 +2449,30 @@ function fillLayerMesh(view, win) {
             && cover[(j + 1) * nx + i]
             && cover[(j + 1) * nx + i + 1];
     };
+    const skirts = [];
     let quads = 0;
-    let walls = 0;
+    const aboveBase = (i, j) => samples[(j * nx + i) * 7 + 1] > baseY + 1e-4;
     for (let j = 0; j < cellsY; j += 1) {
         for (let i = 0; i < cellsX; i += 1) {
             if (!quadOn(i, j)) continue;
             quads += 1;
-            const edge = (ni, nj, tileEdge) => {
+            const consider = (ni, nj, tileEdge, i0, j0, i1, j1) => {
                 if (quadOn(ni, nj)) return;
-                if (ni < 0 || nj < 0 || ni >= cellsX || nj >= cellsY) {
-                    if (tileEdge) walls += 1;
-                    return;
-                }
-                walls += 1;
+                const outside = ni < 0 || nj < 0 || ni >= cellsX || nj >= cellsY;
+                if (outside && !tileEdge) return;
+                skirts.push(i0, j0, i1, j1);
             };
-            edge(i, j - 1, fullPlate && j === 0);
-            edge(i, j + 1, fullPlate && j === cellsY - 1);
-            edge(i - 1, j, fullPlate && i === 0);
-            edge(i + 1, j, fullPlate && i === cellsX - 1);
+            consider(i, j - 1, fullPlate && j === 0, i, j, i + 1, j);
+            consider(i, j + 1, fullPlate && j === cellsY - 1, i + 1, j + 1, i, j + 1);
+            consider(i - 1, j, fullPlate && i === 0, i, j + 1, i, j);
+            consider(i + 1, j, fullPlate && i === cellsX - 1, i + 1, j, i + 1, j + 1);
         }
     }
-    const data = new Float32Array((quads * 6 + walls * 6) * 7);
+    let reliefWalls = 0;
+    for (let s = 0; s < skirts.length; s += 4) {
+        if (aboveBase(skirts[s], skirts[s + 1]) || aboveBase(skirts[s + 2], skirts[s + 3])) reliefWalls += 1;
+    }
+    const data = new Float32Array((quads * 12 + (skirts.length / 4 + reliefWalls) * 6) * 7);
     let offset = 0;
     const pushAt = (i, j) => {
         const at = (j * nx + i) * 7;
@@ -2480,24 +2485,45 @@ function fillLayerMesh(view, win) {
         data[offset + 6] = samples[at + 6];
         offset += 7;
     };
-    const pushBase = (i, j) => {
+    const pushWhite = (i, j, y) => {
         const at = (j * nx + i) * 7;
         data[offset] = samples[at];
-        data[offset + 1] = 0;
+        data[offset + 1] = y;
         data[offset + 2] = samples[at + 2];
-        data[offset + 3] = WALL_RGB[0];
-        data[offset + 4] = WALL_RGB[1];
-        data[offset + 5] = WALL_RGB[2];
+        data[offset + 3] = BASE_RGB[0];
+        data[offset + 4] = BASE_RGB[1];
+        data[offset + 5] = BASE_RGB[2];
         data[offset + 6] = 0;
         offset += 7;
     };
-    const wall = (i0, j0, i1, j1) => {
-        pushBase(i0, j0);
-        pushBase(i1, j1);
-        pushAt(i1, j1);
-        pushBase(i0, j0);
-        pushAt(i1, j1);
-        pushAt(i0, j0);
+    const pushSide = (i, j, y) => {
+        const at = (j * nx + i) * 7;
+        data[offset] = samples[at];
+        data[offset + 1] = y;
+        data[offset + 2] = samples[at + 2];
+        data[offset + 3] = samples[at + 3];
+        data[offset + 4] = samples[at + 4];
+        data[offset + 5] = samples[at + 5];
+        data[offset + 6] = 0;
+        offset += 7;
+    };
+    const baseSkirt = (i0, j0, i1, j1) => {
+        pushWhite(i0, j0, 0);
+        pushWhite(i1, j1, 0);
+        pushWhite(i1, j1, baseY);
+        pushWhite(i0, j0, 0);
+        pushWhite(i1, j1, baseY);
+        pushWhite(i0, j0, baseY);
+    };
+    const reliefSkirt = (i0, j0, i1, j1) => {
+        const h0 = samples[(j0 * nx + i0) * 7 + 1];
+        const h1 = samples[(j1 * nx + i1) * 7 + 1];
+        pushSide(i0, j0, baseY);
+        pushSide(i1, j1, baseY);
+        pushSide(i1, j1, h1);
+        pushSide(i0, j0, baseY);
+        pushSide(i1, j1, h1);
+        pushSide(i0, j0, h0);
     };
     for (let j = 0; j < cellsY; j += 1) {
         for (let i = 0; i < cellsX; i += 1) {
@@ -2508,11 +2534,21 @@ function fillLayerMesh(view, win) {
             pushAt(i + 1, j);
             pushAt(i + 1, j + 1);
             pushAt(i, j + 1);
-            if (!quadOn(i, j - 1) && (j > 0 || (fullPlate && j === 0))) wall(i, j, i + 1, j);
-            if (!quadOn(i, j + 1) && (j + 1 < cellsY || (fullPlate && j === cellsY - 1))) wall(i + 1, j + 1, i, j + 1);
-            if (!quadOn(i - 1, j) && (i > 0 || (fullPlate && i === 0))) wall(i, j + 1, i, j);
-            if (!quadOn(i + 1, j) && (i + 1 < cellsX || (fullPlate && i === cellsX - 1))) wall(i + 1, j, i + 1, j + 1);
+            pushWhite(i, j, 0);
+            pushWhite(i, j + 1, 0);
+            pushWhite(i + 1, j, 0);
+            pushWhite(i + 1, j, 0);
+            pushWhite(i, j + 1, 0);
+            pushWhite(i + 1, j + 1, 0);
         }
+    }
+    for (let s = 0; s < skirts.length; s += 4) {
+        const i0 = skirts[s];
+        const j0 = skirts[s + 1];
+        const i1 = skirts[s + 2];
+        const j1 = skirts[s + 3];
+        baseSkirt(i0, j0, i1, j1);
+        if (aboveBase(i0, j0) || aboveBase(i1, j1)) reliefSkirt(i0, j0, i1, j1);
     }
     if (offset !== data.length) throw new Error("The print mesh did not match the buffer outline.");
     return { data, count: offset / 7, maxH };
@@ -3147,21 +3183,25 @@ function showPrintModel(field) {
     }));
     if (!Number.isFinite(minH)) return;
     const span = Math.max(1e-6, maxH - minH);
+    const baseCut = Number(field.base_in);
+    const baseY = Number.isFinite(baseCut) && baseCut >= 0 ? baseCut : 2.6 / MM_PER_IN;
     const positions = [];
     const colors = [];
     const at = (i, j) => {
         const h = heights[j][i];
-        const baseCut = Number(field.base_in);
-        const flatAt = (Number.isFinite(baseCut) ? baseCut : 2.6 / MM_PER_IN) + 0.01;
-        const tone = h <= flatAt ? 0 : (h - minH) / span;
+        const onBase = h <= baseY + 1e-4;
+        const tone = onBase ? 0 : (h - minH) / span;
         const painted = field.colors && field.colors[j] && field.colors[j][i];
+        const color = onBase
+            ? [1, 1, 1]
+            : (painted ? painted : [0.42 + 0.34 * tone, 0.36 + 0.08 * (1 - tone), 0.22]);
         return [
             (i / (nx - 1) - 0.5) * widthIn,
             h,
             -((j / (ny - 1) - 0.5) * depthIn),
-            painted ? painted[0] : (h <= flatAt ? 0.78 : 0.42 + 0.34 * tone),
-            painted ? painted[1] : (h <= flatAt ? 0.76 : 0.36 + 0.08 * (1 - tone)),
-            painted ? painted[2] : (h <= flatAt ? 0.72 : 0.22),
+            color[0],
+            color[1],
+            color[2],
         ];
     };
     const tri = (a, b, c) => {
@@ -3174,10 +3214,20 @@ function showPrintModel(field) {
     const cellsY = ny - 1;
     const quadOn = (i, j) => i >= 0 && j >= 0 && i < cellsX && j < cellsY
         && present(i, j) && present(i + 1, j) && present(i, j + 1) && present(i + 1, j + 1);
-    const baseOf = (vert) => [vert[0], 0, vert[2], 0.75, 0.73, 0.7];
-    const wall = (p, q) => {
-        const pb = baseOf(p);
-        const qb = baseOf(q);
+    const whiteAt = (vert, y) => [vert[0], y, vert[2], 1, 1, 1];
+    const sideAt = (vert, y) => [vert[0], y, vert[2], vert[3], vert[4], vert[5]];
+    const baseSkirt = (p, q) => {
+        const p0 = whiteAt(p, 0);
+        const q0 = whiteAt(q, 0);
+        const pb = whiteAt(p, baseY);
+        const qb = whiteAt(q, baseY);
+        tri(p0, q0, qb);
+        tri(p0, qb, pb);
+    };
+    const reliefSkirt = (p, q) => {
+        if (p[1] <= baseY + 1e-4 && q[1] <= baseY + 1e-4) return;
+        const pb = sideAt(p, baseY);
+        const qb = sideAt(q, baseY);
         tri(pb, qb, q);
         tri(pb, q, p);
     };
@@ -3190,10 +3240,24 @@ function showPrintModel(field) {
             const ne = at(i + 1, j + 1);
             tri(sw, se, nw);
             tri(se, ne, nw);
-            if (!quadOn(i, j - 1)) wall(sw, se);
-            if (!quadOn(i, j + 1)) wall(ne, nw);
-            if (!quadOn(i - 1, j)) wall(nw, sw);
-            if (!quadOn(i + 1, j)) wall(se, ne);
+            tri(whiteAt(sw, 0), whiteAt(nw, 0), whiteAt(se, 0));
+            tri(whiteAt(se, 0), whiteAt(nw, 0), whiteAt(ne, 0));
+            if (!quadOn(i, j - 1)) {
+                baseSkirt(sw, se);
+                reliefSkirt(sw, se);
+            }
+            if (!quadOn(i, j + 1)) {
+                baseSkirt(ne, nw);
+                reliefSkirt(ne, nw);
+            }
+            if (!quadOn(i - 1, j)) {
+                baseSkirt(nw, sw);
+                reliefSkirt(nw, sw);
+            }
+            if (!quadOn(i + 1, j)) {
+                baseSkirt(se, ne);
+                reliefSkirt(se, ne);
+            }
         }
     }
     const vertexSrc = `
