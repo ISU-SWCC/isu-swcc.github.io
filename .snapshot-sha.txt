@@ -1,5 +1,5 @@
-sha: a387bfc997dd1016c407dd7de155943f9edbbdc9
+sha: 12d2dd78c20cfe768ec8a8a6217d239159495b65
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
-published: 2026-10-15
-note: The public page drapes NAIP from The National Map on the print model. It does not name the campus host. The page script is watershed-model.js?v=20261015a. The stylesheet is still watershed-model.css?v=20261014c. National 30 m and 90 m tiles are not in this repo.
+published: 2026-10-16
+note: The public page allows the basin DEM image and names the grid that loaded. The page script is watershed-model.js?v=20261016b. The stylesheet is still watershed-model.css?v=20261014c. National 30 m and 90 m tiles are not in this repo and are not requested from Cloudflare yet.
