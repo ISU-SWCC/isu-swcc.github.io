@@ -1,5 +1,5 @@
-sha: bcddfd2fcbf92044205ccaff939dc5927c588ca5
+sha: 19d736932f3cf1cf66c48b62b5288204b658c476
 repo: https://github.com/ISU-SWCC/isu-swcc.github.io
 branch: main
-published: 2026-10-16
-note: The print model base is white, from the minimum elevation down by the base thickness. The ground between that plane and the watershed surface is filled, and the bottom is closed. The page script is watershed-model.js?v=20261016d. The stylesheet is still watershed-model.css?v=20261014c. National 30 m and 90 m tiles are not in this repo and are not requested from Cloudflare yet.
+published: 2026-10-17
+note: The public page loads 30 m and 90 m tiles from https://pub-ffa014eb27374c74aacceffe09165dc1.r2.dev. The page script is watershed-model.js?v=20261017a. The stylesheet is still watershed-model.css?v=20261014c. 250 m stays on dem-tiles. Coarser grids stay on this site. The page stores no R2 key.
