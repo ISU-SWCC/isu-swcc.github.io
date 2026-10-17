@@ -3866,19 +3866,21 @@ function bootWatershedPage() {
         const cells = Math.round(area / (state.resolution * state.resolution));
         const fallback = defaultResolutionM(area);
         let text = `${resolutionLabel(state.resolution)} is about ${cells.toLocaleString("en-US")} cells.`;
-        if (state.resolution === fallback) {
+        const selectedOn = state.resolution === 5000 || resolutionAvailable(basinId, state.resolution);
+        if (selectedOn) {
+            text += ` This page uses the ${resolutionLabel(state.resolution)} grid.`;
+        }
+        if (state.resolution === fallback && selectedOn) {
             text += " This default keeps the grid near 100,000 to 1,000,000 cells.";
-        } else if (!resolutionAvailable(basinId, fallback)) {
-            const held = [30, 90].filter((resolution) => !resolutionAvailable(basinId, resolution));
-            const names = held.map(resolutionLabel).join(" and ");
-            const noun = held.length === 1 ? "grid" : "grids";
-            const verb = held.length === 1 ? "is" : "are";
-            text += ` The ${names} ${noun} for this basin ${verb} not on this site.`;
-            if (resolutionAvailable(basinId, state.resolution)) {
-                text += ` This page uses ${resolutionLabel(state.resolution)}.`;
-            }
-        } else {
+        } else if (state.resolution !== fallback && resolutionAvailable(basinId, fallback)) {
             text += ` The default for this basin is ${resolutionLabel(fallback)}.`;
+        }
+        const unpublished = [30, 90].filter((resolution) => !resolutionAvailable(basinId, resolution));
+        if (unpublished.length && state.resolution !== 30 && state.resolution !== 90) {
+            const names = unpublished.map(resolutionLabel).join(" and ");
+            const noun = unpublished.length === 1 ? "grid" : "grids";
+            const verb = unpublished.length === 1 ? "is" : "are";
+            text += ` The ${names} ${noun} ${verb} not published on this site yet.`;
         }
         const published = state.elevGrid && state.elevGrid.key === basinId ? state.elevGrid.resolution_m : null;
         if (published && published !== state.resolution) {
@@ -4185,13 +4187,23 @@ function bootWatershedPage() {
                 text += ` Print grid: ${state.printCrs.label}, ${resolutionLabel(grid.resolution_m)}.`;
             }
         }
-        if (state.color === "white" || state.color === "dem") {
+        if (state.color === "dem" && grid && grid.key === id && grid.resolution_m) {
+            const ramp = activeRamp();
+            const rampName = ramp ? ` Colored with ${ramp.label}.` : "";
+            const range = state.rampScale === "watershed"
+                ? " Basin colors use this watershed's elevation range."
+                : " Basin colors use the CONUS elevation range.";
+            text += ` The watershed is colored from the ${resolutionLabel(grid.resolution_m)} grid. The surrounding base map is the 5 km overview.${rampName}${range}`;
+        } else if (state.color === "white" || state.color === "dem") {
             const ramp = activeRamp();
             const rampName = ramp ? ` Colored with ${ramp.label}.` : "";
             const range = state.rampScale === "watershed"
                 ? " Basin colors use this watershed's elevation range."
                 : " Basin colors use the CONUS elevation range.";
             text += ` The base map is a Copernicus DEM overview at about 5 km, for finding the basin.${rampName}${range}`;
+        } else if (state.color === "topo" || state.color === "satellite") {
+            const surface = state.color === "satellite" ? "NAIP" : "USGS topo";
+            text += ` The ${resolutionLabel(state.resolution)} grid sets the height and the DEM color. This map is ${surface}.`;
         }
         if (state.elevMiss === id && state.elevMissResolution === state.resolution && state.elevMissText) {
             text += ` ${state.elevMissText}`;
@@ -4242,7 +4254,7 @@ function bootWatershedPage() {
         const ramp = activeRamp();
         const rampKey = ramp ? ramp.id : "";
         const fitKey = fit ? `${fit.cols}x${fit.rows}@${fit.rotationDeg} b${fit.borderIn} s${Number(fit.inchesPerMeter).toFixed(8)}` : "";
-        const signature = `${styleColor}|${rampKey}|${state.rampScale}|${state.reliefImage ? state.reliefImage.zKey : ""}|${printKey}|${state.feature ? featureName(state.feature, 0) : ""}|${fitKey}|${state.pourPoint}|${state.exaggeration}|${state.reliefImage ? state.reliefImage.exaggeration : ""}|${state.reliefImage ? state.reliefImage.ramp : ""}|${state.elevGrid ? state.elevGrid.key : ""}`;
+        const signature = `${styleColor}|${rampKey}|${state.rampScale}|${state.reliefImage ? state.reliefImage.zKey : ""}|${printKey}|${state.feature ? featureName(state.feature, 0) : ""}|${fitKey}|${state.pourPoint}|${state.exaggeration}|${state.reliefImage ? state.reliefImage.exaggeration : ""}|${state.reliefImage ? state.reliefImage.ramp : ""}|${state.elevGrid ? state.elevGrid.key : ""}|${state.elevGrid ? state.elevGrid.resolution_m : ""}`;
         if (map._swccSignature === signature) return;
         map._swccSignature = signature;
         const token = (map._swccToken || 0) + 1;
