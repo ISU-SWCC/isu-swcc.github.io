@@ -2009,6 +2009,74 @@ function lookAt4(eye, center, up) {
     ];
 }
 
+function vecNormalize(v) {
+    const length = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / length, v[1] / length, v[2] / length];
+}
+
+function vecCross(a, b) {
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ];
+}
+
+function vecRotate(v, axis, angle) {
+    const k = vecNormalize(axis);
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    const dot = v[0] * k[0] + v[1] * k[1] + v[2] * k[2];
+    const turned = vecCross(k, v);
+    return [
+        v[0] * cosine + turned[0] * sine + k[0] * dot * (1 - cosine),
+        v[1] * cosine + turned[1] * sine + k[1] * dot * (1 - cosine),
+        v[2] * cosine + turned[2] * sine + k[2] * dot * (1 - cosine),
+    ];
+}
+
+function printOrbit() {
+    const polar = 1.05;
+    const yaw = 0.7;
+    return {
+        dir: vecNormalize([
+            Math.sin(polar) * Math.sin(yaw),
+            Math.cos(polar) * 0.55,
+            Math.sin(polar) * Math.cos(yaw),
+        ]),
+        up: [0, 1, 0],
+    };
+}
+
+function turnPrintOrbit(dir, up, dx, dy) {
+    let next = vecRotate(dir, up, dx);
+    let nextUp = vecRotate(up, up, dx);
+    const right = vecCross(nextUp, next);
+    if (Math.hypot(right[0], right[1], right[2]) > 1e-6) {
+        next = vecRotate(next, right, dy);
+        nextUp = vecRotate(nextUp, right, dy);
+    }
+    const forward = vecNormalize(next);
+    const along = nextUp[0] * forward[0] + nextUp[1] * forward[1] + nextUp[2] * forward[2];
+    const lifted = vecNormalize([
+        nextUp[0] - forward[0] * along,
+        nextUp[1] - forward[1] * along,
+        nextUp[2] - forward[2] * along,
+    ]);
+    return {
+        dir: forward,
+        up: Number.isFinite(lifted[0]) ? lifted : [0, 1, 0],
+    };
+}
+
+function printEye(dir, radius, target) {
+    return [
+        target[0] + dir[0] * radius,
+        target[1] + dir[1] * radius,
+        target[2] + dir[2] * radius,
+    ];
+}
+
 let printFrame = 0;
 let printGeneration = 0;
 let printViewToken = 0;
@@ -2358,7 +2426,7 @@ function fillLayerMesh(view, win) {
             const at = (j * nx + i) * 7;
             samples[at] = mx;
             samples[at + 1] = h;
-            samples[at + 2] = my;
+            samples[at + 2] = -my;
             samples[at + 3] = color[0];
             samples[at + 4] = color[1];
             samples[at + 5] = color[2];
@@ -2827,7 +2895,7 @@ function showLayerModel(view) {
         varying float vImage;
         void main() {
             vColor = aColor;
-            vInch = aPos.xz;
+            vInch = vec2(aPos.x, -aPos.z);
             vImage = aImage;
             gl_Position = uMvp * vec4(aPos, 1.0);
         }`;
@@ -2890,8 +2958,7 @@ function showLayerModel(view) {
     gl.clearColor(0.957, 0.957, 0.957, 1);
     const mvpLoc = gl.getUniformLocation(program, "uMvp");
     let dolly = 1;
-    let yaw = 0.7;
-    let polar = 1.05;
+    let orbit = printOrbit();
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
@@ -3005,8 +3072,7 @@ function showLayerModel(view) {
     };
     canvas.onpointermove = (event) => {
         if (!dragging) return;
-        yaw += (event.clientX - lastX) * 0.01;
-        polar = Math.min(1.4, Math.max(0.2, polar + (event.clientY - lastY) * 0.01));
+        orbit = turnPrintOrbit(orbit.dir, orbit.up, (event.clientX - lastX) * 0.01, (event.clientY - lastY) * 0.01);
         lastX = event.clientX;
         lastY = event.clientY;
     };
@@ -3035,12 +3101,9 @@ function showLayerModel(view) {
         canvas.height = Math.round(height * ratio);
         gl.viewport(0, 0, canvas.width, canvas.height);
         const radius = Math.max(view.widthIn, view.depthIn) * 0.95 * dolly;
-        const eye = [
-            radius * Math.sin(polar) * Math.sin(yaw),
-            Math.cos(polar) * radius * 0.55 + maxH,
-            radius * Math.sin(polar) * Math.cos(yaw),
-        ];
-        const viewMatrix = lookAt4(eye, [0, maxH * 0.5, 0], [0, 1, 0]);
+        const target = [0, maxH * 0.5, 0];
+        const eye = printEye(orbit.dir, radius, target);
+        const viewMatrix = lookAt4(eye, target, orbit.up);
         const projection = perspective4(0.65, canvas.width / canvas.height, Math.max(0.05, radius * 0.01), radius * 8 + view.widthIn);
         gl.uniformMatrix4fv(mvpLoc, false, new Float32Array(multiply4(projection, viewMatrix)));
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -3095,7 +3158,7 @@ function showPrintModel(field) {
         return [
             (i / (nx - 1) - 0.5) * widthIn,
             h,
-            (j / (ny - 1) - 0.5) * depthIn,
+            -((j / (ny - 1) - 0.5) * depthIn),
             painted ? painted[0] : (h <= flatAt ? 0.78 : 0.42 + 0.34 * tone),
             painted ? painted[1] : (h <= flatAt ? 0.76 : 0.36 + 0.08 * (1 - tone)),
             painted ? painted[2] : (h <= flatAt ? 0.72 : 0.22),
@@ -3183,8 +3246,7 @@ function showPrintModel(field) {
     gl.clearColor(0.957, 0.957, 0.957, 1);
     const mvpLoc = gl.getUniformLocation(program, "uMvp");
     const count = positions.length / 3;
-    let yaw = 0.7;
-    let polar = 1.05;
+    let orbit = printOrbit();
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
@@ -3196,8 +3258,7 @@ function showPrintModel(field) {
     };
     canvas.onpointermove = (event) => {
         if (!dragging) return;
-        yaw += (event.clientX - lastX) * 0.01;
-        polar = Math.min(1.4, Math.max(0.2, polar + (event.clientY - lastY) * 0.01));
+        orbit = turnPrintOrbit(orbit.dir, orbit.up, (event.clientX - lastX) * 0.01, (event.clientY - lastY) * 0.01);
         lastX = event.clientX;
         lastY = event.clientY;
     };
@@ -3213,12 +3274,9 @@ function showPrintModel(field) {
         canvas.height = Math.round(height * ratio);
         gl.viewport(0, 0, canvas.width, canvas.height);
         const radius = Math.max(widthIn, depthIn) * 0.95;
-        const eye = [
-            radius * Math.sin(polar) * Math.sin(yaw),
-            Math.cos(polar) * radius * 0.55 + maxH,
-            radius * Math.sin(polar) * Math.cos(yaw),
-        ];
-        const view = lookAt4(eye, [0, maxH * 0.5, 0], [0, 1, 0]);
+        const target = [0, maxH * 0.5, 0];
+        const eye = printEye(orbit.dir, radius, target);
+        const view = lookAt4(eye, target, orbit.up);
         const projection = perspective4(0.65, canvas.width / canvas.height, 0.5, radius * 6);
         gl.uniformMatrix4fv(mvpLoc, false, new Float32Array(multiply4(projection, view)));
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
